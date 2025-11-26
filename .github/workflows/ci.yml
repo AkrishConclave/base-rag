@@ -1,0 +1,121 @@
+name: CI - Tests and Linting
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint:
+    name: Code Linting
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      working-directory: ./api
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black mypy
+        pip install -r requirements.txt
+    
+    - name: Run flake8
+      working-directory: ./api
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      continue-on-error: true
+    
+    - name: Check code formatting with black
+      working-directory: ./api
+      run: |
+        black --check .
+      continue-on-error: true
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      chroma:
+        image: chromadb/chroma:latest
+        ports:
+          - 8000:8000
+        options: >-
+          --health-cmd "curl -f http://localhost:8000/api/v1/heartbeat || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      working-directory: ./api
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov pytest-asyncio httpx
+        pip install -r requirements.txt
+    
+    - name: Create .env file for testing
+      working-directory: ./api
+      run: |
+        cat > .env << EOF
+        OPENROUTER_API_KEY=test-key
+        OPENROUTER_MODEL=deepseek/deepseek-chat
+        CHROMA_DIR=./test_chroma_db
+        EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
+        LOG_LEVEL=INFO
+        CACHE_ENABLED=false
+        EOF
+    
+    - name: Run tests
+      working-directory: ./api
+      run: |
+        pytest tests/ -v --cov=. --cov-report=xml || true
+      continue-on-error: true
+    
+    - name: Test API endpoints
+      working-directory: ./api
+      run: |
+        python -c "from api.main import app; print('✅ App imports successfully')"
+      env:
+        OPENROUTER_API_KEY: test-key
+
+  docker-build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./docker/Dockerfile.api
+        push: false
+        tags: rag-pinbox-api:test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+

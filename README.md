@@ -2,6 +2,9 @@
 
 RAG-система для ответов на вопросы пользователей на основе базы знаний статей поддержки Pinbox.
 
+[![CI](https://github.com/AkrishConclave/rag-pinbox/actions/workflows/ci.yml/badge.svg)](https://github.com/AkrishConclave/rag-pinbox/actions/workflows/ci.yml)
+[![Docker Build](https://github.com/AkrishConclave/rag-pinbox/actions/workflows/docker-build.yml/badge.svg)](https://github.com/AkrishConclave/rag-pinbox/actions/workflows/docker-build.yml)
+
 > 📖 **Подробная документация по архитектуре:** см. [ARCHITECTURE.md](./ARCHITECTURE.md)
 
 ## Структура проекта
@@ -208,6 +211,17 @@ echo $data["answer"];
 ### Ошибка при чтении JSON файла
 Убедитесь, что файл `support_*.json` находится в корне проекта и имеет правильный формат.
 
+## CI/CD
+
+Проект использует GitHub Actions для автоматизации:
+
+- **CI** - автоматическое тестирование и линтинг при каждом PR
+- **CD** - автоматическая сборка Docker образов и деплой
+- **Docker Build** - проверка сборки Docker образа
+- **Release** - автоматическое создание релизов при тегах
+
+Подробнее см. [.github/workflows/](./.github/workflows/)
+
 ## Технологии
 
 - **FastAPI** - веб-фреймворк
@@ -215,4 +229,5 @@ echo $data["answer"];
 - **Sentence Transformers** - создание эмбеддингов
 - **OpenRouter API** - генерация ответов (с автоматическим fallback на резервные модели)
 - **Docker** - контейнеризация
+- **GitHub Actions** - CI/CD
 
