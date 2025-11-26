@@ -5,6 +5,11 @@ on:
     branches: [ main ]
     tags:
       - 'v*'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'docker/**'
+      - 'api/**'
   workflow_dispatch:
 
 env:
@@ -51,13 +56,12 @@ jobs:
       with:
         context: .
         file: ./docker/Dockerfile.api
-        push: true
+        push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
         platforms: linux/amd64,linux/arm64
-        github-token: ${{ secrets.GITHUB_TOKEN }}
         github-token: ${{ secrets.GITHUB_TOKEN }}
 
   deploy-staging:
