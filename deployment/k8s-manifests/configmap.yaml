@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rag-pinbox-config
+data:
+  OPENROUTER_MODEL: "deepseek/deepseek-chat"
+  CHROMA_DIR: "/data/chroma_db"
+  CHROMA_COLLECTION_NAME: "support_articles"
+  EMBED_MODEL: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+  TOP_K: "10"
+  MAX_DISTANCE: "0.8"
+  LLM_PROVIDER: "openrouter"
+  LOG_LEVEL: "INFO"
+  CACHE_ENABLED: "true"
+  CACHE_TTL: "3600"
+  CACHE_TYPE: "redis"
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+

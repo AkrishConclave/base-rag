@@ -1,0 +1,61 @@
+# Development Docker Compose
+# Использование: docker-compose up -d
+# В dev монтируем код для hot-reload
+
+services:
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: chroma
+    restart: unless-stopped
+    volumes:
+      - ../chroma_db:/chromadb/data
+    environment:
+      - IS_PERSISTENT=TRUE
+    ports:
+      - "8001:8000"
+    networks:
+      - rag-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: rag-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - rag-network
+    command: redis-server --appendonly yes
+
+  rag_api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: rag_api
+    restart: unless-stopped
+    # В dev монтируем код для hot-reload
+    volumes:
+      - ../api:/app/api
+      - ../chroma_db:/chroma_db
+      - ..:/project_root
+    env_file:
+      - ../api/.env
+    environment:
+      - PYTHONPATH=/app
+    ports:
+      - "9001:9001"
+    depends_on:
+      - chroma
+      - redis
+    networks:
+      - rag-network
+    # Для dev можно включить reload (но лучше через uvicorn в коде)
+    # command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "9001", "--reload"]
+
+volumes:
+  redis-data:
+
+networks:
+  rag-network:
+    driver: bridge

@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-pinbox-api
+  labels:
+    app: rag-pinbox-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rag-pinbox-api
+  template:
+    metadata:
+      labels:
+        app: rag-pinbox-api
+    spec:
+      containers:
+      - name: api
+        image: rag-pinbox-api:latest
+        ports:
+        - containerPort: 9001
+        env:
+        - name: PYTHONPATH
+          value: "/app"
+        envFrom:
+        - configMapRef:
+            name: rag-pinbox-config
+        - secretRef:
+            name: rag-pinbox-secrets
+        volumeMounts:
+        - name: chroma-data
+          mountPath: /data/chroma_db
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: chroma-data
+        persistentVolumeClaim:
+          claimName: chroma-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-pinbox-api
+spec:
+  selector:
+    app: rag-pinbox-api
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 9001
+  type: LoadBalancer
+
