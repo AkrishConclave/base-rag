@@ -88,7 +88,11 @@ jobs:
     - name: Run tests
       working-directory: ./api
       run: |
-        pytest tests/ -v --cov=. --cov-report=xml || true
+        if [ -d "tests" ] && [ "$(ls -A tests/*.py 2>/dev/null)" ]; then
+          pytest tests/ -v --cov=. --cov-report=xml || true
+        else
+          echo "⚠️  No tests found, skipping..."
+        fi
       continue-on-error: true
     
     - name: Test API endpoints
