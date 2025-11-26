@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """Настройки приложения из переменных окружения"""
     
     # OpenRouter настройки
-    openrouter_api_key: str
+    openrouter_api_key: str = ""  # Может быть пустым для тестов
     openrouter_model: str = "deepseek/deepseek-chat"
     openrouter_fallback_models: List[str] = [
         'openai/gpt-5-mini',

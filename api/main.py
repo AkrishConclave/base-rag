@@ -18,20 +18,28 @@ async def lifespan(app: FastAPI):
     try:
         from api.chroma.client import get_collection, get_embedder
         # Предзагружаем для быстрого первого запроса
-        get_embedder()
-        print("✅ Embedder initialized")
+        try:
+            get_embedder()
+            print("✅ Embedder initialized")
+        except Exception as e:
+            print(f"⚠️  Embedder initialization warning: {e}")
         # Пробуем подключиться к коллекции (может не быть, если не индексировали)
         try:
             get_collection()
             print("✅ ChromaDB collection ready")
-        except Exception:
-            print("⚠️  ChromaDB collection not found - run /api/ingest first")
+        except Exception as e:
+            print(f"⚠️  ChromaDB collection not found - run /api/ingest first: {e}")
     except Exception as e:
         print(f"⚠️  Initialization warning: {e}")
     
     yield
     
     # Shutdown: очистка ресурсов (если нужно)
+    try:
+        from api.llm.cache import close_cache
+        close_cache()
+    except Exception:
+        pass
     print("🛑 Shutting down RAG Pinbox API...")
 
 

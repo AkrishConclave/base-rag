@@ -66,10 +66,11 @@ jobs:
     - name: Start API server
       working-directory: ./api
       run: |
+        export PYTHONPATH="${GITHUB_WORKSPACE}"
         python -m uvicorn api.main:app --host 0.0.0.0 --port 9001 &
-        sleep 10
+        sleep 15
       env:
-        PYTHONPATH: /home/runner/work/rag-pinbox/rag-pinbox
+        PYTHONPATH: ${{ github.workspace }}
     
     - name: Test Health Check
       run: |
@@ -89,10 +90,19 @@ jobs:
     - name: Check API structure
       working-directory: ./api
       run: |
+        export PYTHONPATH="${GITHUB_WORKSPACE}"
         python -c "
-        from api.main import app
-        from api.config import settings
-        print('✅ App imports successfully')
-        print(f'✅ Config loaded: {settings.llm_provider}')
+        try:
+            from api.main import app
+            from api.config import settings
+            print('✅ App imports successfully')
+            print(f'✅ Config loaded: {settings.llm_provider}')
+        except Exception as e:
+            print(f'⚠️  Import error: {e}')
+            import traceback
+            traceback.print_exc()
+            exit(1)
         "
+      env:
+        PYTHONPATH: ${{ github.workspace }}
 
