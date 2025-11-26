@@ -9,15 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
+# Копируем requirements и устанавливаем зависимости в отдельном слое для кэширования
 COPY api/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Удаляем build-essential после установки зависимостей для уменьшения размера образа
-RUN apt-get update && apt-get purge -y --auto-remove \
-    build-essential \
-    gcc \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir -r requirements.txt && \
+    apt-get update && \
+    apt-get purge -y --auto-remove build-essential gcc g++ && \
+    rm -rf /var/lib/apt/lists/*
 
 # Копируем api/ в /app/api/, чтобы импорты from api.* работали
 COPY api/ /app/api/
