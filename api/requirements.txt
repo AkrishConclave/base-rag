@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+chromadb
+# torch устанавливается отдельно в Dockerfile как CPU-only версия
+sentence-transformers
+python-dotenv
+requests
+pydantic
+pydantic-settings
+redis
