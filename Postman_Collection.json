@@ -85,6 +85,61 @@
 			"description": "Эндпоинты для индексации данных. Индексируются статьи со статусом 0 (для staff) и статусом 1 (для клиентов)."
 		},
 		{
+			"name": "Upload",
+			"item": [
+				{
+					"name": "Загрузить файл support_*.json",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": [],
+									"description": "JSON файл, начинающийся с support_"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/api/upload-support",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"upload-support"
+							]
+						},
+						"description": "Загружает новый файл support_*.json. Старый файл автоматически переименовывается с добавлением *old* в название (например, support_202511221211.json -> support_202511221211*old*.json). После загрузки необходимо выполнить индексацию через /api/ingest."
+					},
+					"response": []
+				},
+				{
+					"name": "Скачать текущий файл support_*.json",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/download-support",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"download-support"
+							]
+						},
+						"description": "Скачивает текущий файл support_*.json, который используется для индексации. Полезно для просмотра или редактирования файла перед загрузкой новой версии."
+					},
+					"response": []
+				}
+			],
+			"description": "Эндпоинты для загрузки и управления файлами support_*.json"
+		},
+		{
 			"name": "RAG - Поиск и ответы",
 			"item": [
 				{

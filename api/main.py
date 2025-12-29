@@ -8,6 +8,7 @@ import uvicorn
 from api.routes import rag_router, ingest_router
 from api.routes.embed import router as embed_router
 from api.routes.debug import router as debug_router
+from api.routes.upload import router as upload_router
 from api.config import settings
 
 # Настройка логирования
@@ -74,6 +75,7 @@ def register_routers():
     app.include_router(ingest_router)
     app.include_router(embed_router)
     app.include_router(debug_router)
+    app.include_router(upload_router)
 
 register_routers()
 
