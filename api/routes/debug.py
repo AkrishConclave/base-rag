@@ -1,4 +1,5 @@
 """Debug эндпоинты для отладки и разработки"""
+import asyncio
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, model_validator
@@ -55,7 +56,8 @@ async def create_embedding(request: EmbedRequest):
     """
     try:
         embedder = get_embedder()
-        embedding = embedder.encode([request.text])[0].tolist()
+        embeddings = await asyncio.to_thread(embedder.encode, [request.text])
+        embedding = embeddings[0].tolist()
         return EmbedResponse(
             embedding=embedding,
             dimension=len(embedding)
@@ -82,10 +84,10 @@ async def debug_search(request: SearchDebugRequest):
         
         # Выполняем поиск
         if request.use_hybrid:
-            results = hybrid_search(query, top_k=request.top_k, admin_mode=request.admin_mode)
+            results = await asyncio.to_thread(hybrid_search, query, top_k=request.top_k, admin_mode=request.admin_mode)
             search_type = "hybrid"
         else:
-            results = search(query, top_k=request.top_k, admin_mode=request.admin_mode)
+            results = await asyncio.to_thread(search, query, top_k=request.top_k, admin_mode=request.admin_mode)
             search_type = "vector"
         
         # Формируем детальную информацию
@@ -367,7 +369,7 @@ async def test_llm_connection(request: LLMTestRequest):
         
         # Тестируем расширение запроса
         start_time = time.time()
-        expanded_query = expand_query_with_llm(query)
+        expanded_query = await asyncio.to_thread(expand_query_with_llm, query)
         response_time = (time.time() - start_time) * 1000  # в миллисекундах
         
         logger.info(f"LLM тест успешен: {query} -> {expanded_query[:100]}...")
