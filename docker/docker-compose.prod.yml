@@ -38,7 +38,6 @@ services:
     # В prod НЕ монтируем код - только образ
     volumes:
       - ../chroma_db:/chroma_db
-      - ..:/project_root
     env_file:
       - ../deployment/prod.env
     environment:
