@@ -33,6 +33,10 @@ def find_support_json() -> str:
     for project_root in unique_paths:
         pattern = os.path.join(project_root, "support_*.json")
         files = glob.glob(pattern)
+        
+        # Исключаем файлы с *old* в названии
+        files = [f for f in files if "*old*" not in f and not f.endswith(".old.json")]
+        
         if files:
             # Берем самый новый файл по времени модификации
             return max(files, key=os.path.getmtime)
