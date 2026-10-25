@@ -1,9 +1,10 @@
 """Роут для индексации данных"""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from api.models.response import IngestResponse
 from api.chroma.ingest import run_ingest
+from api.utils.security import verify_admin_token
 
-router = APIRouter(prefix="/api", tags=["Ingest"])
+router = APIRouter(prefix="/api", tags=["Ingest"], dependencies=[Depends(verify_admin_token)])
 
 
 @router.post("/ingest", response_model=IngestResponse)

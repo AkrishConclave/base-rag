@@ -1,7 +1,8 @@
 """Роут для обработки вопросов через RAG"""
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from api.models.request import AskRequest
+from api.utils.security import is_admin_request
 from api.models.response import AskResponse, Source
 from api.chroma.search import search
 from api.chroma.hybrid import hybrid_search
@@ -35,13 +36,14 @@ def _format_search_results_as_answer(hits: list, question: str) -> str:
 
 
 @router.post("/ask", response_model=AskResponse)
-async def ask(request: AskRequest):
+async def ask(request: AskRequest, req: Request):
     """
     Отвечает на вопрос пользователя на основе проиндексированных статей.
     Если LLM недоступен, возвращает результаты поиска с информативным сообщением.
     
     Args:
         request: Запрос с вопросом пользователя
+        req: Объекты запроса FastAPI для проверки авторизации в заголовках
         
     Returns:
         Ответ с текстом и источниками
@@ -50,13 +52,16 @@ async def ask(request: AskRequest):
     if not question:
         raise HTTPException(status_code=400, detail="Вопрос не может быть пустым")
     
+    # Проверка прав администратора/staff на бэкенде
+    admin_mode = is_admin_request(req)
+
     # Поиск релевантных документов (гибридный или векторный)
     # Это критически важная часть - должна работать всегда
     try:
         if request.use_hybrid:
-            hits = hybrid_search(question, admin_mode=request.admin_mode)
+            hits = hybrid_search(question, admin_mode=admin_mode)
         else:
-            hits = search(question, admin_mode=request.admin_mode)
+            hits = search(question, admin_mode=admin_mode)
         logger.info(f"Найдено {len(hits)} результатов для запроса: {question}")
     except Exception as e:
         logger.error(f"Ошибка при поиске документов: {e}", exc_info=True)
