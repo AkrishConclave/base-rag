@@ -8,3 +8,4 @@ requests
 pydantic
 pydantic-settings
 redis
+pyjwt

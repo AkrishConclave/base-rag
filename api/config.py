@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
+
+    # Безопасность и авторизация
+    admin_token: str = "secret-admin-token"
+    jwt_secret: str = "secret-jwt-key"
+    jwt_algorithm: str = "HS256"
     
     @field_validator('openrouter_fallback_models', mode='before')
     @classmethod

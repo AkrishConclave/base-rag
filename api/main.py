@@ -1,7 +1,7 @@
 """Точка входа FastAPI приложения"""
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -9,6 +9,7 @@ from api.routes import rag_router, ingest_router
 from api.routes.embed import router as embed_router
 from api.routes.debug import router as debug_router
 from api.config import settings
+from api.utils.security import verify_admin_token
 
 # Настройка логирования
 logging.basicConfig(
@@ -103,7 +104,7 @@ async def health_check():
 
 # Обратная совместимость со старыми эндпоинтами
 @app.post("/ask")
-async def ask_legacy(payload: dict):
+async def ask_legacy(payload: dict, raw_request: Request):
     """Legacy endpoint для обратной совместимости"""
     from api.routes.rag import ask
     from api.models.request import AskRequest
@@ -112,12 +113,13 @@ async def ask_legacy(payload: dict):
     if not question:
         return {"error": "empty question"}
     
-    request = AskRequest(q=question)
-    response = await ask(request)
+    use_hybrid = payload.get("use_hybrid", False)
+    request = AskRequest(q=question, use_hybrid=use_hybrid)
+    response = await ask(request, raw_request)
     return response.dict()
 
 
-@app.post("/ingest")
+@app.post("/ingest", dependencies=[Depends(verify_admin_token)])
 async def ingest_legacy():
     """Legacy endpoint для обратной совместимости"""
     from api.routes.ingest import ingest

@@ -1,16 +1,17 @@
 """Debug эндпоинты для отладки и разработки"""
 import logging
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional
 from api.chroma.search import search
 from api.chroma.hybrid import hybrid_search
 from api.chroma.client import get_embedder, get_collection
 from api.llm.cache import get_cache
 from api.llm.prompt_refine import expand_query_with_llm
+from api.utils.security import verify_admin_token
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/debug", tags=["Debug"])
+router = APIRouter(prefix="/api/debug", tags=["Debug"], dependencies=[Depends(verify_admin_token)])
 
 
 class EmbedRequest(BaseModel):
@@ -111,8 +112,16 @@ async def debug_search(request: SearchDebugRequest):
 
 class CheckIdsRequest(BaseModel):
     """Запрос на проверку article_id"""
-    start_id: int
-    end_id: int
+    start_id: int = Field(..., description="Начальный ID диапазона")
+    end_id: int = Field(..., description="Конечный ID диапазона")
+
+    @model_validator(mode='after')
+    def validate_range(self) -> 'CheckIdsRequest':
+        if self.end_id < self.start_id:
+            raise ValueError("end_id не может быть меньше start_id")
+        if self.end_id - self.start_id > 1000:
+            raise ValueError("Разница между start_id и end_id не должна превышать 1000")
+        return self
 
 
 class CheckIdsResponse(BaseModel):
