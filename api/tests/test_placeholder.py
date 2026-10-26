@@ -1,25 +1,98 @@
-"""Placeholder tests for CI"""
+"""Интеграционные тесты для API (/health, /api/ask, /ask и валидация)"""
+from unittest.mock import patch, MagicMock
 import pytest
-import sys
-import os
+from fastapi.testclient import TestClient
 
-# Добавляем корневую директорию в путь для импортов
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from api.main import app
 
-
-def test_placeholder():
-    """Basic placeholder test that always passes"""
-    assert True
+client = TestClient(app)
 
 
-def test_imports():
-    """Test that basic imports work"""
-    try:
-        # Пробуем импортировать основные модули
-        from api.config import settings
-        assert settings is not None
-        print("✅ Config imported successfully")
-    except Exception as e:
-        # В CI это может не работать из-за отсутствия зависимостей
-        print(f"⚠️  Import test skipped: {e}")
-        pytest.skip(f"Imports not available: {e}")
+def test_health_check_endpoint():
+    """Тест эндпоинта /health: проверка статуса 200 и структуры JSON"""
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert "version" in data
+    assert "chroma_db" in data
+
+
+def test_ask_endpoint_success():
+    """Тест успешного запроса к /api/ask с мокингом поиска и LLM"""
+    with patch("api.routes.rag.search") as mock_search, \
+         patch("api.routes.rag.get_llm_provider") as mock_get_llm:
+
+        mock_hit = MagicMock()
+        mock_hit.doc = "Текст найденной статьи поддержки Pinbox"
+        mock_hit.meta = {"title": "Настройка интеграции", "article_id": "42"}
+        mock_hit.dist = 0.15
+        mock_search.return_value = [mock_hit]
+
+        mock_provider = MagicMock()
+        mock_provider.complete_with_fallback.return_value = "Для настройки интеграции перейдите в раздел Настройки."
+        mock_get_llm.return_value = mock_provider
+
+        response = client.post("/api/ask", json={"q": "Как настроить интеграцию?"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "answer" in data
+        assert data["answer"] == "Для настройки интеграции перейдите в раздел Настройки."
+        assert len(data["sources"]) == 1
+        assert data["sources"][0]["title"] == "Настройка интеграции"
+        assert data["sources"][0]["id"] == "42"
+
+
+def test_ask_legacy_endpoint_success():
+    """Тест успешного запроса к legacy эндпоинту /ask"""
+    with patch("api.routes.rag.search") as mock_search, \
+         patch("api.routes.rag.get_llm_provider") as mock_get_llm:
+
+        mock_hit = MagicMock()
+        mock_hit.doc = "Текст найденной статьи"
+        mock_hit.meta = {"title": "Тестовая статья", "article_id": "100"}
+        mock_hit.dist = 0.2
+        mock_search.return_value = [mock_hit]
+
+        mock_provider = MagicMock()
+        mock_provider.complete_with_fallback.return_value = "Тестовый ответ"
+        mock_get_llm.return_value = mock_provider
+
+        response = client.post("/ask", json={"q": "Тестовый вопрос"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["answer"] == "Тестовый ответ"
+        assert len(data["sources"]) == 1
+
+
+@pytest.mark.parametrize("invalid_payload", [
+    {},
+    {"q": ""},
+    {"q": "   "},
+    {"q": None},
+])
+def test_ask_empty_or_missing_question_validation(invalid_payload):
+    """Тест валидации пустых или отсутствующих вопросов в /api/ask"""
+    response = client.post("/api/ask", json=invalid_payload)
+    assert response.status_code in (400, 422)
+    data = response.json()
+    assert "detail" in data
+    assert "ошибка" in data["detail"].lower() or "пустым" in data["detail"].lower() or "вопрос" in data["detail"].lower()
+
+
+@pytest.mark.parametrize("invalid_payload", [
+    {},
+    {"q": ""},
+    {"q": "   "},
+    {"q": None},
+])
+def test_ask_legacy_empty_question_validation(invalid_payload):
+    """Тест валидации пустых вопросов в legacy /ask"""
+    response = client.post("/ask", json=invalid_payload)
+    assert response.status_code in (400, 422)
+    data = response.json()
+    assert "detail" in data or "error" in data
+    detail_or_err = str(data.get("detail") or data.get("error")).lower()
+    assert "пустым" in detail_or_err or "ошибка" in detail_or_err or "empty" in detail_or_err
