@@ -65,69 +65,24 @@ def search(query: str, top_k: int | None = None, admin_mode: bool = False) -> li
     metas = resp["metadatas"][0]
     dists = resp["distances"][0]
     
-    # Сортируем и фильтруем результаты
+    import re
+    # Сортируем и фильтруем результаты по сбалансированной математической метрике
     results_with_scores = []
-    query_words = set(query_lower.split())
-    keywords_set = set(keywords_lower.split())
-    
-    # Дополнительно проверяем совпадение ключевых слов из расширенного запроса
-    expanded_keywords = set([w for w in expanded_query.lower().split() if len(w) > 3])
-    
-    # Извлекаем ключевые слова из расширенного запроса для лучшего сопоставления
-    important_words = set()
-    for word in expanded_keywords:
-        if word in ['прайс', 'товар', 'добавить', 'разместить', 'загрузить', 'создать']:
-            important_words.add(word)
+    query_words = set(re.findall(r'\w+', query_lower))
     
     for doc, meta, dist in zip(docs, metas, dists):
-        score = 1.0 - dist  # Преобразуем расстояние в score (чем больше, тем лучше)
+        vector_score = max(0.0, 1.0 - dist)
         
-        # Бонус за совпадение ключевых слов в заголовке
         title = (meta.get('title') or '').lower()
-        menu = (meta.get('menu') or '').lower()
+        title_words = set(re.findall(r'\w+', title))
         
-        # Проверяем совпадения в заголовке и меню
-        title_words = set(title.split())
-        menu_words = set(menu.split())
-        
-        # Большой бонус за прямое совпадение ключевых слов в заголовке
-        keyword_matches = keywords_set & title_words
-        expanded_keyword_matches = expanded_keywords & title_words
-        important_word_matches = important_words & title_words
-        
-        if keyword_matches:
-            score += 0.8 * len(keyword_matches)
-        elif important_word_matches:
-            score += 1.0 * len(important_word_matches)
-        elif expanded_keyword_matches:
-            score += 0.6 * len(expanded_keyword_matches)
-        elif query_words & title_words or expanded_words & title_words:
-            score += 0.15
-        
-        # Бонус за совпадение слов в меню
-        if keywords_set & menu_words:
-            score += 0.4
-        elif query_words & menu_words or expanded_words & menu_words:
-            score += 0.1
-        
-        # Дополнительный бонус, если ключевое слово является частью заголовка
-        for kw in keywords_set:
-            if len(kw) > 3:
-                kw_root = kw[:min(6, len(kw))]
-                if kw in title or any(
-                    kw_root in word or word.startswith(kw_root) or kw.startswith(word[:min(6, len(word))])
-                    for word in title_words if len(word) > 3
-                ):
-                    score += 0.5
-        
-        # Бонус за частичное совпадение
-        all_query_words = keywords_set | expanded_words
-        for q_word in all_query_words:
-            if len(q_word) > 4:
-                if any(q_word in t_word or t_word in q_word for t_word in title_words if len(t_word) > 4):
-                    score += 0.05
-        
-        results_with_scores.append({"doc": doc, "meta": meta, "dist": dist, "score": score})
+        if query_words:
+            title_overlap = len(query_words & title_words) / len(query_words)
+        else:
+            title_overlap = 0.0
+
+        final_score = 0.8 * vector_score + 0.2 * title_overlap
+        results_with_scores.append({"doc": doc, "meta": meta, "dist": dist, "score": final_score})
     
     # Сортируем по score и берем лучшие
     results_with_scores.sort(key=lambda x: x["score"], reverse=True)

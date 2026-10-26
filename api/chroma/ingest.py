@@ -83,7 +83,7 @@ def run_ingest() -> int:
         plain = html_to_text(raw_html)
         if not plain:
             continue
-        chunks = chunk_text(plain)
+        chunks = chunk_text(plain, title=row.get("title") or "")
         for idx, chunk in enumerate(chunks):
             doc_id = f"{aid}_{idx}"
             all_ids.append(doc_id)
