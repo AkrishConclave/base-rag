@@ -1,4 +1,5 @@
 """Роут для обработки вопросов через RAG"""
+import asyncio
 import logging
 from fastapi import APIRouter, HTTPException, Request
 from api.models.request import AskRequest
@@ -59,9 +60,9 @@ async def ask(request: AskRequest, req: Request):
     # Это критически важная часть - должна работать всегда
     try:
         if request.use_hybrid:
-            hits = hybrid_search(question, admin_mode=admin_mode)
+            hits = await asyncio.to_thread(hybrid_search, question, admin_mode=admin_mode)
         else:
-            hits = search(question, admin_mode=admin_mode)
+            hits = await asyncio.to_thread(search, question, admin_mode=admin_mode)
         logger.info(f"Найдено {len(hits)} результатов для запроса: {question}")
     except Exception as e:
         logger.error(f"Ошибка при поиске документов: {e}", exc_info=True)
@@ -88,7 +89,8 @@ async def ask(request: AskRequest, req: Request):
         
         # Генерация ответа через LLM с fallback
         provider = get_llm_provider()
-        answer = provider.complete_with_fallback(
+        answer = await asyncio.to_thread(
+            provider.complete_with_fallback,
             prompt,
             system_message="Ты — помощник поддержки Pinbox. Отвечай по контексту.",
             max_tokens=700

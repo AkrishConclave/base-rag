@@ -72,10 +72,9 @@ def run_ingest() -> int:
     except Exception:
         pass
     
-    # Индексируем данные
+    # Собираем все документы и метаданные
     all_ids = []
     all_docs = []
-    all_embs = []
     metadatas = []
     
     for row in rows:
@@ -89,8 +88,6 @@ def run_ingest() -> int:
             doc_id = f"{aid}_{idx}"
             all_ids.append(doc_id)
             all_docs.append(chunk)
-            emb = embedder.encode(chunk).tolist()
-            all_embs.append(emb)
             metadatas.append({
                 "article_id": aid,
                 "title": row.get("title"),
@@ -101,8 +98,25 @@ def run_ingest() -> int:
                 "is_staff": str(row.get("status") == 0)  # Для удобной фильтрации
             })
     
+    # Пакетное (batch) создание эмбеддингов по 64 штуки
+    all_embs = []
+    batch_size = 64
+    print(f"Generating embeddings for {len(all_docs)} chunks in batches of {batch_size}...")
+    for i in range(0, len(all_docs), batch_size):
+        batch_docs = all_docs[i:i + batch_size]
+        batch_embs = embedder.encode(batch_docs, batch_size=len(batch_docs), show_progress_bar=False).tolist()
+        all_embs.extend(batch_embs)
+
     print("Adding to Chroma:", len(all_docs), "chunks")
-    collection.add(documents=all_docs, embeddings=all_embs, ids=all_ids, metadatas=metadatas)
+    # Добавляем данные в ChromaDB пакетами для оптимальной работы
+    chroma_batch_size = 500
+    for i in range(0, len(all_docs), chroma_batch_size):
+        collection.add(
+            documents=all_docs[i:i + chroma_batch_size],
+            embeddings=all_embs[i:i + chroma_batch_size],
+            ids=all_ids[i:i + chroma_batch_size],
+            metadatas=metadatas[i:i + chroma_batch_size]
+        )
     print("Done. Persisted to", settings.chroma_dir)
     
     # Подсчитываем статистику по статусам

@@ -1,4 +1,5 @@
 """Эндпоинт для создания эмбеддингов"""
+import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List
@@ -36,7 +37,8 @@ async def create_embedding(request: EmbedRequest):
     """
     try:
         embedder = get_embedder()
-        embedding = embedder.encode([request.text])[0].tolist()
+        embeddings = await asyncio.to_thread(embedder.encode, [request.text])
+        embedding = embeddings[0].tolist()
         return EmbedResponse(
             embedding=embedding,
             dimension=len(embedding)
