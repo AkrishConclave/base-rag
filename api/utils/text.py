@@ -49,15 +49,19 @@ def html_to_text(html_str: str) -> str:
     return text.strip()
 
 
-def chunk_text(text: str, max_words: int = 220, overlap: int = 40) -> list[str]:
-    """Разбивает текст на чанки с перекрытием"""
+def chunk_text(text: str, max_words: int = 220, overlap: int = 40, title: str = "") -> list[str]:
+    """Разбивает текст на чанки с перекрытием. Если указан заголовок, добавляет его в начало каждого чанка."""
     words = text.split()
     chunks = []
     i = 0
     n = len(words)
+    prefix = f"Заголовок: {title.strip()}\n\n" if title and title.strip() else ""
     while i < n:
         chunk = words[i:i+max_words]
-        chunks.append(" ".join(chunk))
+        chunk_str = " ".join(chunk)
+        if prefix:
+            chunk_str = f"{prefix}{chunk_str}"
+        chunks.append(chunk_str)
         i += max_words - overlap
     return chunks
 

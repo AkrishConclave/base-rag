@@ -129,17 +129,6 @@ def hybrid_search(query: str, top_k: int | None = None, bm25_weight: float = 0.3
         # Комбинируем scores
         hybrid_score = (vector_score * vector_weight) + (bm25_normalized * bm25_weight)
         
-        # Бонусы за совпадения в заголовке (как в обычном search)
-        title = (meta.get('title') or '').lower()
-        title_words = set(title.split())
-        query_words = set(query.lower().split())
-        keywords_set = set(keywords.lower().split())
-        
-        if keywords_set & title_words:
-            hybrid_score += 0.3
-        elif query_words & title_words:
-            hybrid_score += 0.1
-        
         results_with_scores.append({
             "doc": doc,
             "meta": meta,
