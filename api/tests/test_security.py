@@ -10,6 +10,13 @@ from api.config import settings
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def configured_admin_secrets(monkeypatch):
+    """Each test opts into explicit, non-production authorization secrets."""
+    monkeypatch.setattr(settings, "admin_token", "test-admin-token")
+    monkeypatch.setattr(settings, "jwt_secret", "test-jwt-secret-with-at-least-32-characters")
+
+
 def test_ask_request_ignores_admin_mode_in_body():
     """Тест: передача admin_mode в теле запроса не включает админ режим без заголовка"""
     with patch("api.routes.rag.search") as mock_search:
@@ -69,6 +76,19 @@ def test_ask_with_invalid_jwt_token():
         assert mock_search.called
         _, kwargs = mock_search.call_args
         assert kwargs.get("admin_mode") is False
+
+
+def test_jwt_is_rejected_when_jwt_secret_is_not_configured(monkeypatch):
+    """An unsigned JWT must never grant staff access."""
+    monkeypatch.setattr(settings, "jwt_secret", "")
+    token = jwt.encode({"role": "staff"}, "untrusted-secret", algorithm="HS256")
+
+    with patch("api.routes.rag.search") as mock_search:
+        mock_search.return_value = []
+        response = client.post("/api/ask", json={"q": "тест"}, headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert mock_search.call_args.kwargs["admin_mode"] is False
 
 
 def test_protected_ingest_without_token():

@@ -45,8 +45,8 @@ class Settings(BaseSettings):
     redis_db: int = 0
 
     # Authorization.
-    admin_token: str = "secret-admin-token"
-    jwt_secret: str = "secret-jwt-key"
+    admin_token: str = ""
+    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
 
     @cached_property

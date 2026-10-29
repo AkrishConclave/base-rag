@@ -38,17 +38,14 @@ def decode_jwt_token(token: str) -> Optional[dict]:
     Декодирует и проверяет JWT токен.
     Возвращает payload если токен валиден, иначе None.
     """
-    if not token:
+    if not token or not settings.jwt_secret:
         return None
 
     try:
-        # Если jwt_secret задан, проверяем подпись
-        options = {"verify_signature": bool(settings.jwt_secret)}
         payload = jwt.decode(
             token,
-            key=settings.jwt_secret or "",
+            key=settings.jwt_secret,
             algorithms=[settings.jwt_algorithm],
-            options=options
         )
         return payload
     except jwt.ExpiredSignatureError:

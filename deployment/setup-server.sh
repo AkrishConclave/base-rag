@@ -230,7 +230,7 @@ cat ~/.ssh/rag-support_deploy.pub
 
 Если репозиторий еще не клонирован, выполните:
 \`\`\`bash
-sudo -u $DEPLOY_USER git clone https://github.com/AkrishConclave/rag-support.git $PROJECT_DIR
+sudo -u $DEPLOY_USER git clone https://github.com/AkrishConclave/base-rag.git $PROJECT_DIR
 cd $PROJECT_DIR
 \`\`\`
 
@@ -276,7 +276,7 @@ echo ""
 echo -e "${YELLOW}📋 Следующие шаги:${NC}"
 echo ""
 echo "1. Если репозиторий еще не клонирован, выполните:"
-echo "   sudo -u $DEPLOY_USER git clone https://github.com/AkrishConclave/rag-support.git $PROJECT_DIR"
+echo "   sudo -u $DEPLOY_USER git clone https://github.com/AkrishConclave/base-rag.git $PROJECT_DIR"
 echo ""
 echo "2. Настройте переменные окружения:"
 echo "   sudo -u $DEPLOY_USER cp $PROJECT_DIR/deployment/prod.env.example $PROJECT_DIR/deployment/prod.env"
