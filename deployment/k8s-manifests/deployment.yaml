@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-support-api
+  labels:
+    app: rag-support-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rag-support-api
+  template:
+    metadata:
+      labels:
+        app: rag-support-api
+    spec:
+      containers:
+      - name: api
+        image: rag-support-api:latest
+        ports:
+        - containerPort: 9001
+        env:
+        - name: PYTHONPATH
+          value: "/app"
+        envFrom:
+        - configMapRef:
+            name: rag-support-config
+        - secretRef:
+            name: rag-support-secrets
+        volumeMounts:
+        - name: chroma-data
+          mountPath: /data/chroma_db
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9001
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: chroma-data
+        persistentVolumeClaim:
+          claimName: chroma-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-support-api
+spec:
+  selector:
+    app: rag-support-api
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 9001
+  type: LoadBalancer
+

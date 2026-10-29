@@ -1,0 +1,33 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Отключаем GPU/CUDA на уровне контейнера
+ENV CUDA_VISIBLE_DEVICES=""
+ENV TRANSFORMERS_NO_CUDA="1"
+ENV TORCH_DEVICE="cpu"
+
+# Устанавливаем системные зависимости для сборки пакетов
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копируем requirements и устанавливаем зависимости в отдельном слое для кэширования
+COPY api/requirements.txt /app/requirements.txt
+# Сначала устанавливаем CPU-only версию PyTorch (без CUDA)
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch && \
+    pip install --no-cache-dir -r requirements.txt && \
+    apt-get update && \
+    apt-get purge -y --auto-remove build-essential gcc g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+# Копируем api/ в /app/api/, чтобы импорты from api.* работали
+COPY api/ /app/api/
+
+# Устанавливаем PYTHONPATH для корректной работы импортов
+ENV PYTHONPATH=/app
+
+# Запускаем через uvicorn напрямую
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "9001"]

@@ -1,0 +1,639 @@
+{
+  "info": {
+    "_postman_id": "rag-support-api-v2",
+    "name": "RAG Support API v2.0",
+    "description": "Коллекция для тестирования RAG-системы поддержки Support с новыми возможностями: гибридный поиск, кэширование, debug endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "2.0.0"
+  },
+  "item": [
+    {
+      "name": "Health & Status",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Проверка состояния API и ChromaDB. Используется для мониторинга и load balancer."
+          },
+          "response": []
+        }
+      ],
+      "description": "Эндпоинты для проверки состояния системы"
+    },
+    {
+      "name": "Ingest",
+      "item": [
+        {
+          "name": "Индексация данных (API)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Admin-Token",
+                "value": "{{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/ingest",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ingest"
+              ]
+            },
+            "description": "Индексирует статьи из JSON файла в векторную базу данных ChromaDB. Индексируются статьи со статусом 0 (для staff) и статусом 1 (для клиентов). Выполните этот запрос перед первым использованием системы."
+          },
+          "response": []
+        }
+      ],
+      "description": "Эндпоинты для индексации данных. Индексируются статьи со статусом 0 (для staff) и статусом 1 (для клиентов)."
+    },
+    {
+      "name": "Upload",
+      "item": [
+        {
+          "name": "Загрузить файл support_*.json",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "JSON файл, начинающийся с support_"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/upload-support",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "upload-support"
+              ]
+            },
+            "description": "Загружает новый файл support_*.json. Старый файл автоматически переименовывается с добавлением *old* в название (например, support_202511221211.json -> support_202511221211*old*.json). После загрузки необходимо выполнить индексацию через /api/ingest."
+          },
+          "response": []
+        },
+        {
+          "name": "Скачать текущий файл support_*.json",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/download-support",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "download-support"
+              ]
+            },
+            "description": "Скачивает текущий файл support_*.json, который используется для индексации. Полезно для просмотра или редактирования файла перед загрузкой новой версии."
+          },
+          "response": []
+        }
+      ],
+      "description": "Эндпоинты для загрузки и управления файлами support_*.json"
+    },
+    {
+      "name": "RAG - Поиск и ответы",
+      "item": [
+        {
+          "name": "Ask Question (Векторный поиск)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"q\": \"Как настроить оповещения?\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ask",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ask"
+              ]
+            },
+            "description": "Публичная справка для клиентов. По умолчанию показывает только публичные статьи (status=1). Используйте admin_mode: true для админки (все статьи)."
+          },
+          "response": []
+        },
+        {
+          "name": "Ask Question (Гибридный поиск)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"q\": \"Как настроить оповещения?\",\n    \"use_hybrid\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ask",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ask"
+              ]
+            },
+            "description": "Публичная справка с гибридным поиском. По умолчанию показывает только публичные статьи (status=1). Используйте admin_mode: true для админки."
+          },
+          "response": []
+        },
+        {
+          "name": "Ask - Админ режим (все статьи)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"q\": \"Как обрабатывать задачи актуализации?\",\n    \"admin_mode\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ask",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ask"
+              ]
+            },
+            "description": "Админ режим - показывает все статьи (status=0 ИЛИ status=1). Более развернутая версия справки для персонала."
+          },
+          "response": []
+        },
+        {
+          "name": "Ask - Коллтрекинг",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"q\": \"Что такое коллтрекинг и как его настроить?\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ask",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ask"
+              ]
+            },
+            "description": "Пример вопроса о коллтрекинге"
+          },
+          "response": []
+        },
+        {
+          "name": "Ask - Оповещения Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"q\": \"Как настроить оповещения по электронной почте?\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ask",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ask"
+              ]
+            },
+            "description": "Пример вопроса об оповещениях по email"
+          },
+          "response": []
+        },
+        {
+          "name": "Ask - Яндекс.Карты",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"q\": \"Как настроить приоритетное размещение в Яндекс.Картах?\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ask",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ask"
+              ]
+            },
+            "description": "Пример вопроса о Яндекс.Картах"
+          },
+          "response": []
+        },
+        {
+          "name": "Ask - Динамическая загрузка",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"q\": \"Как работает динамическая загрузка данных через XML?\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/ask",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "ask"
+              ]
+            },
+            "description": "Пример вопроса о динамической загрузке"
+          },
+          "response": []
+        }
+      ],
+      "description": "Эндпоинты для поиска и генерации ответов"
+    },
+    {
+      "name": "Embed",
+      "item": [
+        {
+          "name": "Создать эмбеддинг",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Admin-Token",
+                "value": "{{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"text\": \"тестовый текст для создания эмбеддинга\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/embed",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "embed"
+              ]
+            },
+            "description": "Создает эмбеддинг для текста. Полезно для тестирования моделей эмбеддингов и отладки."
+          },
+          "response": []
+        }
+      ],
+      "description": "Эндпоинты для работы с эмбеддингами"
+    },
+    {
+      "name": "Debug",
+      "item": [
+        {
+          "name": "Debug Search (Векторный)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Admin-Token",
+                "value": "{{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"q\": \"оповещения\",\n    \"top_k\": 5,\n    \"use_hybrid\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/debug/search",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "debug",
+                "search"
+              ]
+            },
+            "description": "Отладочный поиск с детальной информацией о результатах. Показывает rank, title, distance, preview для каждого результата. По умолчанию показывает только публичные статьи (status=1). Используйте admin_mode: true для админки (все статьи)."
+          },
+          "response": []
+        },
+        {
+          "name": "Debug Search (Гибридный)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Admin-Token",
+                "value": "{{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"q\": \"оповещения\",\n    \"top_k\": 5,\n    \"use_hybrid\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/debug/search",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "debug",
+                "search"
+              ]
+            },
+            "description": "Отладочный гибридный поиск с детальной информацией о результатах."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Article IDs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Admin-Token",
+                "value": "{{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"start_id\": 1000,\n    \"end_id\": 1009\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/debug/check-ids",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "debug",
+                "check-ids"
+              ]
+            },
+            "description": "Проверяет наличие записей с article_id в указанном диапазоне. Полезно для проверки индексации конкретных статей."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Index",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/debug/clear-index",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "debug",
+                "clear-index"
+              ]
+            },
+            "description": "Очищает все данные из ChromaDB индекса (удаляет коллекцию). После очистки необходимо выполнить индексацию через /api/ingest. Возвращает количество удаленных записей."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Cache",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/debug/clear-cache",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "debug",
+                "clear-cache"
+              ]
+            },
+            "description": "Очищает весь кэш запросов LLM. Работает с SQLite и Redis. Полезно для сброса кэша при обновлении данных или для тестирования."
+          },
+          "response": []
+        },
+        {
+          "name": "Test LLM Connection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Admin-Token",
+                "value": "{{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"query\": \"как настроить оповещения\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/debug/test-llm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "debug",
+                "test-llm"
+              ]
+            },
+            "description": "Проверяет соединение с LLM для расширения поисковых запросов. Тестирует функцию expand_query_with_llm и возвращает время ответа, расширенный запрос и информацию о провайдере."
+          },
+          "response": []
+        }
+      ],
+      "description": "Эндпоинты для отладки и разработки"
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:9001",
+      "type": "string"
+    }
+  ]
+}
