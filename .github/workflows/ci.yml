@@ -25,8 +25,20 @@ jobs:
       working-directory: ./api
       run: |
         python -m pip install --upgrade pip
+        # sentence-transformers depends on torch. Install its CPU wheel first so
+        # the resolver does not select PyPI's CUDA-enabled Linux wheel.
+        pip install --index-url https://download.pytorch.org/whl/cpu torch
         pip install -r requirements.txt pytest
         pip install flake8
+
+    - name: Verify CPU-only PyTorch
+      working-directory: ./api
+      run: |
+        python -c "import torch; assert not torch.cuda.is_available(), 'CUDA-enabled torch is not allowed in CI'"
+        if pip freeze | grep -E '^(nvidia-|cuda-)'; then
+          echo 'CUDA packages are not allowed in the CPU-only CI environment.'
+          exit 1
+        fi
     
     - name: Run flake8 (critical errors only)
       working-directory: ./api
