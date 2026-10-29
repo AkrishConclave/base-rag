@@ -20,8 +20,18 @@ def get_embedder() -> SentenceTransformer:
     global _embedder
     if _embedder is None:
         print(f"Loading embedder: {settings.embed_model} (CPU mode)")
-        # Явно указываем device='cpu' для отключения GPU
-        _embedder = SentenceTransformer(settings.embed_model, device='cpu')
+        # First prefer the persistent local Hugging Face cache. It avoids slow
+        # metadata checks on every container restart. A brand-new deployment
+        # falls back to one network download and then populates that cache.
+        try:
+            _embedder = SentenceTransformer(
+                settings.embed_model,
+                device="cpu",
+                local_files_only=True,
+            )
+            print("Loaded embedder from local cache")
+        except OSError:
+            _embedder = SentenceTransformer(settings.embed_model, device="cpu")
     return _embedder
 
 
