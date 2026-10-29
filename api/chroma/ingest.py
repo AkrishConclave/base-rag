@@ -5,6 +5,7 @@ import glob
 import chromadb
 from api.config import settings
 from api.chroma.client import get_embedder
+from api.chroma.embeddings import encode_passages
 from api.utils.text import html_to_text, chunk_text
 from api.vector_engine import InMemoryVectorIndex, replace_index
 
@@ -110,7 +111,7 @@ def run_ingest() -> int:
     print(f"Generating embeddings for {len(all_docs)} chunks in batches of {batch_size}...")
     for i in range(0, len(all_docs), batch_size):
         batch_docs = all_docs[i:i + batch_size]
-        batch_embs = embedder.encode(batch_docs, batch_size=len(batch_docs), show_progress_bar=False).tolist()
+        batch_embs = encode_passages(embedder, batch_docs, batch_size=len(batch_docs)).tolist()
         all_embs.extend(batch_embs)
 
     print("Adding to Chroma:", len(all_docs), "chunks")

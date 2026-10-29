@@ -60,7 +60,7 @@ def test_batch_ingest_execution():
          patch("builtins.open", mock_open(read_data=json_bytes)):
 
         mock_embedder = MagicMock()
-        mock_embedder.encode.side_effect = lambda docs, batch_size=64, show_progress_bar=False: MagicMock(
+        mock_embedder.encode.side_effect = lambda docs, batch_size=64, show_progress_bar=False, normalize_embeddings=False: MagicMock(
             tolist=lambda: [[0.1] * 384 for _ in docs]
         )
         mock_get_embedder.return_value = mock_embedder
@@ -75,6 +75,8 @@ def test_batch_ingest_execution():
         assert mock_embedder.encode.called
         call_args = mock_embedder.encode.call_args[0]
         assert isinstance(call_args[0], list)
+        assert all(text.startswith("passage: ") for text in call_args[0])
+        assert mock_embedder.encode.call_args.kwargs["normalize_embeddings"] is True
 
 
 def test_native_memory_index_returns_only_public_documents_without_admin_access():

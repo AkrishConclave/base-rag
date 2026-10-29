@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import List
 from api.config import settings
 from api.chroma.client import get_embedder
+from api.chroma.embeddings import encode_query
 from api.chroma.schema import SearchResult
 from api.llm.prompt_refine import expand_query_with_llm
 from api.utils.text import extract_keywords
@@ -83,7 +84,7 @@ def hybrid_search(query: str, top_k: int | None = None, bm25_weight: float = 0.3
     search_query = f"{keywords} {expanded_query}" if keywords != query else expanded_query
     
     # Векторный поиск
-    q_emb = embedder.encode([search_query])[0]
+    q_emb = encode_query(embedder, search_query)
     vector_hits = search_index(q_emb, top_k * 3, admin_mode)
     vector_docs = [hit.doc for hit in vector_hits]
     vector_metas = [hit.meta for hit in vector_hits]

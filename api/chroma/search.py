@@ -2,6 +2,7 @@
 from __future__ import annotations
 from api.config import settings
 from api.chroma.client import get_embedder
+from api.chroma.embeddings import encode_query
 from api.chroma.schema import SearchResult
 from api.llm.prompt_refine import expand_query_with_llm
 from api.utils.text import extract_keywords
@@ -42,7 +43,7 @@ def search(query: str, top_k: int | None = None, admin_mode: bool = False) -> li
         search_query = f"{keywords} {expanded_query}" if keywords != query else expanded_query
     
     # Создаем эмбеддинг для поиска
-    q_emb = embedder.encode([search_query])[0]
+    q_emb = encode_query(embedder, search_query)
     # Native C top-K searches only public candidates unless the authenticated
     # caller has staff access. This is enforced before reranking.
     vector_hits = search_index(q_emb, top_k * 10, admin_mode)

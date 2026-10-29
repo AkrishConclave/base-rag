@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     chroma_collection_name: str = "support_articles"
 
     # Embedding model.
-    embed_model: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+    embed_model: str = "intfloat/multilingual-e5-small"
 
     # Search.
     top_k: int = 10

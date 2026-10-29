@@ -24,7 +24,7 @@ YANDEX_CLOUD_BASE_URL=https://ai.api.cloud.yandex.net/v1
 YANDEX_CLOUD_TEMPERATURE=0.3
 YANDEX_CLOUD_MAX_OUTPUT_TOKENS=65536
 CHROMA_DIR=./chroma_db
-EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
+EMBED_MODEL=intfloat/multilingual-e5-small
 TOP_K=5
 ADMIN_TOKEN=replace-with-a-long-random-value
 JWT_SECRET=replace-with-a-long-random-value
@@ -79,6 +79,11 @@ PYTHONPATH=. pytest api/tests -q
 AVX2/FMA на x86-64, NEON на ARM и безопасным scalar fallback. После каждого
 `POST /api/ingest` новый полностью подготовленный индекс атомарно публикуется
 в RAM. При перезапуске API он восстанавливается из ChromaDB до начала поиска.
+
+Для retrieval используется `intfloat/multilingual-e5-small`. Индексация
+добавляет к статьям префикс `passage: `, а поиск — `query: `, как требует
+модель. При изменении `EMBED_MODEL` обязательно выполните `POST /api/ingest`:
+векторы от разных embedding-моделей несовместимы.
 
 Совместимые маршруты без префикса `/api` не поддерживаются.
 
