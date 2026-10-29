@@ -1,10 +1,11 @@
 """Векторный поиск в ChromaDB"""
 from __future__ import annotations
 from api.config import settings
-from api.chroma.client import get_collection, get_embedder
+from api.chroma.client import get_embedder
 from api.chroma.schema import SearchResult
 from api.llm.prompt_refine import expand_query_with_llm
 from api.utils.text import extract_keywords
+from api.vector_engine import search_index
 
 
 def search(query: str, top_k: int | None = None, admin_mode: bool = False) -> list[SearchResult]:
@@ -20,14 +21,6 @@ def search(query: str, top_k: int | None = None, admin_mode: bool = False) -> li
         top_k = settings.top_k
     
     embedder = get_embedder()
-    collection = get_collection()
-    
-    # Формируем фильтр по статусу
-    where_filter = None
-    if not admin_mode:
-        # По умолчанию (публичная справка) - только статус 1 (для клиентов)
-        where_filter = {"status": 1}
-    # Если admin_mode=True, where_filter остается None - показываем все статьи (status=0 ИЛИ status=1)
     
     # Извлекаем ключевые слова из запроса
     keywords = extract_keywords(query)
@@ -49,28 +42,18 @@ def search(query: str, top_k: int | None = None, admin_mode: bool = False) -> li
         search_query = f"{keywords} {expanded_query}" if keywords != query else expanded_query
     
     # Создаем эмбеддинг для поиска
-    q_emb = embedder.encode([search_query])[0].tolist()
-    
-    # Запрашиваем больше результатов для фильтрации
-    query_params = {
-        "query_embeddings": [q_emb],
-        "n_results": top_k * 10,  # Увеличиваем до 10x для лучшего покрытия
-        "include": ["documents", "metadatas", "distances"]
-    }
-    if where_filter:
-        query_params["where"] = where_filter
-    
-    resp = collection.query(**query_params)
-    docs = resp["documents"][0]
-    metas = resp["metadatas"][0]
-    dists = resp["distances"][0]
+    q_emb = embedder.encode([search_query])[0]
+    # Native C top-K searches only public candidates unless the authenticated
+    # caller has staff access. This is enforced before reranking.
+    vector_hits = search_index(q_emb, top_k * 10, admin_mode)
     
     import re
     # Сортируем и фильтруем результаты по сбалансированной математической метрике
     results_with_scores = []
     query_words = set(re.findall(r'\w+', query_lower))
     
-    for doc, meta, dist in zip(docs, metas, dists):
+    for hit in vector_hits:
+        doc, meta, dist = hit.doc, hit.meta, hit.dist
         vector_score = max(0.0, 1.0 - dist)
         
         title = (meta.get('title') or '').lower()

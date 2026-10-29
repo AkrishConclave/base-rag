@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting RAG Support API...")
     try:
         from api.chroma.client import get_collection, get_embedder
+        from api.vector_engine import load_index_from_collection
         # Предзагружаем для быстрого первого запроса
         try:
             get_embedder()
@@ -37,8 +38,9 @@ async def lifespan(app: FastAPI):
             logger.warning(f"⚠️  Embedder initialization warning: {e}")
         # Пробуем подключиться к коллекции (может не быть, если не индексировали)
         try:
-            get_collection()
-            logger.info("✅ ChromaDB collection ready")
+            collection = get_collection()
+            vector_count = load_index_from_collection(collection)
+            logger.info("✅ ChromaDB collection ready; native memory index loaded: %s vectors", vector_count)
         except Exception as e:
             logger.warning(f"⚠️  ChromaDB collection not found - run /api/ingest first: {e}")
     except Exception as e:

@@ -30,6 +30,7 @@ jobs:
         pip install --index-url https://download.pytorch.org/whl/cpu torch
         pip install -r requirements.txt pytest
         pip install flake8
+        pip install ..
 
     - name: Verify CPU-only PyTorch
       working-directory: ./api

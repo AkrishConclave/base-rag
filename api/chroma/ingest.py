@@ -6,6 +6,7 @@ import chromadb
 from api.config import settings
 from api.chroma.client import get_embedder
 from api.utils.text import html_to_text, chunk_text
+from api.vector_engine import InMemoryVectorIndex, replace_index
 
 
 def find_support_json() -> str:
@@ -122,6 +123,9 @@ def run_ingest() -> int:
             ids=all_ids[i:i + chroma_batch_size],
             metadatas=metadatas[i:i + chroma_batch_size]
         )
+    # Chroma remains the durable copy. Publish the fully built RAM index only
+    # after it has every vector, so concurrent searches never observe a half-index.
+    replace_index(InMemoryVectorIndex.create(all_embs, all_docs, metadatas))
     print("Done. Persisted to", settings.chroma_dir)
     
     # Подсчитываем статистику по статусам

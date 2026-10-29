@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from api.main import app
 from api.llm.prompt_refine import expand_query_with_llm
 from api.chroma.ingest import run_ingest
+from api.vector_engine.index import InMemoryVectorIndex
 
 client = TestClient(app)
 
@@ -74,3 +75,18 @@ def test_batch_ingest_execution():
         assert mock_embedder.encode.called
         call_args = mock_embedder.encode.call_args[0]
         assert isinstance(call_args[0], list)
+
+
+def test_native_memory_index_returns_only_public_documents_without_admin_access():
+    """The C candidate list enforces visibility before any result is returned."""
+    index = InMemoryVectorIndex.create(
+        embeddings=[[1.0, 0.0], [0.99, 0.01], [0.0, 1.0]],
+        documents=["public", "staff", "other public"],
+        metadatas=[{"status": 1}, {"status": 0}, {"status": 1}],
+    )
+
+    public_hits = index.search([1.0, 0.0], top_k=3, admin_mode=False)
+    admin_hits = index.search([1.0, 0.0], top_k=3, admin_mode=True)
+
+    assert [hit.doc for hit in public_hits] == ["public", "other public"]
+    assert [hit.doc for hit in admin_hits][:2] == ["public", "staff"]

@@ -16,9 +16,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Копируем requirements и устанавливаем зависимости в отдельном слое для кэширования
 COPY api/requirements.txt /app/requirements.txt
+COPY setup.py /app/setup.py
+COPY pyproject.toml /app/pyproject.toml
+COPY native/ /app/native/
 # Сначала устанавливаем CPU-only версию PyTorch (без CUDA)
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch && \
     pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir . && \
     apt-get update && \
     apt-get purge -y --auto-remove build-essential gcc g++ && \
     rm -rf /var/lib/apt/lists/*

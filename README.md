@@ -1,7 +1,8 @@
 # RAG Support API
 
-Сервис поиска и генерации ответов по локальной базе знаний. Статьи
-индексируются в ChromaDB; ответы формируются через настроенного LLM-провайдера.
+Сервис поиска и генерации ответов по локальной базе знаний. ChromaDB хранит
+постоянную копию индекса, а поиск выполняется собственным CPU-only C-движком
+по непрерывной матрице `float32`; ответы формируются через Yandex AI Studio.
 
 ## Требования
 
@@ -70,8 +71,14 @@ curl http://localhost:9001/health
 
 ```bash
 python -m pip install -r api/requirements.txt pytest
+python -m pip install .
 PYTHONPATH=. pytest api/tests -q
 ```
+
+`pip install .` собирает модуль `rag_vector_native`: C-код с runtime-dispatch
+AVX2/FMA на x86-64, NEON на ARM и безопасным scalar fallback. После каждого
+`POST /api/ingest` новый полностью подготовленный индекс атомарно публикуется
+в RAM. При перезапуске API он восстанавливается из ChromaDB до начала поиска.
 
 Совместимые маршруты без префикса `/api` не поддерживаются.
 
