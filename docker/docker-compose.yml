@@ -39,10 +39,14 @@ services:
       - ../api:/app/api
       - ../chroma_db:/chroma_db
       - ..:/project_root
+      - hf-cache:/models/huggingface
+      - rag-cache:/cache
     env_file:
       - ../api/.env
     environment:
       - PYTHONPATH=/app
+      # Keep Chroma's persistent index in the mounted host directory.
+      - CHROMA_DIR=/chroma_db
     ports:
       - "9001:9001"
     depends_on:
@@ -55,6 +59,8 @@ services:
 
 volumes:
   redis-data:
+  hf-cache:
+  rag-cache:
 
 networks:
   rag-network:

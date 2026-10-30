@@ -7,9 +7,11 @@ from typing import List, Optional
 from api.chroma.search import search
 from api.chroma.hybrid import hybrid_search
 from api.chroma.client import get_embedder, get_collection
+from api.chroma.embeddings import encode_query
 from api.llm.cache import get_cache
 from api.llm.prompt_refine import expand_query_with_llm
 from api.utils.security import verify_admin_token
+from api.vector_engine import clear_index as clear_memory_index
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/debug", tags=["Debug"], dependencies=[Depends(verify_admin_token)])
@@ -56,8 +58,8 @@ async def create_embedding(request: EmbedRequest):
     """
     try:
         embedder = get_embedder()
-        embeddings = await asyncio.to_thread(embedder.encode, [request.text])
-        embedding = embeddings[0].tolist()
+        embedding = await asyncio.to_thread(encode_query, embedder, request.text)
+        embedding = embedding.tolist()
         return EmbedResponse(
             embedding=embedding,
             dimension=len(embedding)
@@ -249,6 +251,7 @@ async def clear_index():
         
         # Сбрасываем глобальный кэш коллекции для пересоздания при следующем запросе
         reset_collection_cache()
+        clear_memory_index()
         
         logger.info(f"Индекс очищен. Удалено записей: {deleted_count}")
         

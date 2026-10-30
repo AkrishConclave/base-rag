@@ -1,10 +1,12 @@
 """Векторный поиск в ChromaDB"""
 from __future__ import annotations
 from api.config import settings
-from api.chroma.client import get_collection, get_embedder
+from api.chroma.client import get_embedder
+from api.chroma.embeddings import encode_query
 from api.chroma.schema import SearchResult
 from api.llm.prompt_refine import expand_query_with_llm
 from api.utils.text import extract_keywords
+from api.vector_engine import search_index, search_title_matches
 
 
 def search(query: str, top_k: int | None = None, admin_mode: bool = False) -> list[SearchResult]:
@@ -18,16 +20,6 @@ def search(query: str, top_k: int | None = None, admin_mode: bool = False) -> li
     """
     if top_k is None:
         top_k = settings.top_k
-    
-    embedder = get_embedder()
-    collection = get_collection()
-    
-    # Формируем фильтр по статусу
-    where_filter = None
-    if not admin_mode:
-        # По умолчанию (публичная справка) - только статус 1 (для клиентов)
-        where_filter = {"status": 1}
-    # Если admin_mode=True, where_filter остается None - показываем все статьи (status=0 ИЛИ status=1)
     
     # Извлекаем ключевые слова из запроса
     keywords = extract_keywords(query)
@@ -48,47 +40,58 @@ def search(query: str, top_k: int | None = None, admin_mode: bool = False) -> li
         expanded_words = set(expanded_query.lower().split())
         search_query = f"{keywords} {expanded_query}" if keywords != query else expanded_query
     
-    # Создаем эмбеддинг для поиска
-    q_emb = embedder.encode([search_query])[0].tolist()
-    
-    # Запрашиваем больше результатов для фильтрации
-    query_params = {
-        "query_embeddings": [q_emb],
-        "n_results": top_k * 10,  # Увеличиваем до 10x для лучшего покрытия
-        "include": ["documents", "metadatas", "distances"]
-    }
-    if where_filter:
-        query_params["where"] = where_filter
-    
-    resp = collection.query(**query_params)
-    docs = resp["documents"][0]
-    metas = resp["metadatas"][0]
-    dists = resp["distances"][0]
-    
     import re
+    meaningful_words = set(re.findall(r'\w+', keywords.lower()))
+    # Create lexical title candidates first. They complement, rather than
+    # replace, semantic retrieval for exact how-to article names.
+    title_hits = search_title_matches(meaningful_words, top_k, admin_mode)
+
+    embedder = get_embedder()
+    # Создаем эмбеддинг для поиска
+    q_emb = encode_query(embedder, search_query)
+    # Native C top-K searches only public candidates unless the authenticated
+    # caller has staff access. This is enforced before reranking.
+    vector_hits = search_index(q_emb, top_k * 10, admin_mode)
+    
+    # Do not reward boilerplate question words such as "что такое".  They occur
+    # in many article titles and previously let a generic FAQ outrank an article
+    # whose title contained the actual subject of the request.
     # Сортируем и фильтруем результаты по сбалансированной математической метрике
     results_with_scores = []
-    query_words = set(re.findall(r'\w+', query_lower))
     
-    for doc, meta, dist in zip(docs, metas, dists):
+    for hit in vector_hits:
+        doc, meta, dist = hit.doc, hit.meta, hit.dist
         vector_score = max(0.0, 1.0 - dist)
         
         title = (meta.get('title') or '').lower()
         title_words = set(re.findall(r'\w+', title))
         
-        if query_words:
-            title_overlap = len(query_words & title_words) / len(query_words)
+        if meaningful_words:
+            title_overlap = len(meaningful_words & title_words) / len(meaningful_words)
         else:
             title_overlap = 0.0
 
-        final_score = 0.8 * vector_score + 0.2 * title_overlap
+        # A title is curated metadata and an exact meaningful-word match is a
+        # stronger signal than a semantically similar generic help article.
+        final_score = 0.7 * vector_score + 0.3 * title_overlap
         results_with_scores.append({"doc": doc, "meta": meta, "dist": dist, "score": final_score})
     
     # Сортируем по score и берем лучшие
     results_with_scores.sort(key=lambda x: x["score"], reverse=True)
     results = []
+    seen_articles = set()
+    for hit in title_hits:
+        article_id = hit.meta.get("article_id", "")
+        if article_id not in seen_articles:
+            results.append(hit)
+            seen_articles.add(article_id)
     for r in results_with_scores[:top_k]:
-        results.append(SearchResult(doc=r["doc"], meta=r["meta"], dist=r["dist"]))
+        article_id = r["meta"].get("article_id", "")
+        if article_id not in seen_articles:
+            results.append(SearchResult(doc=r["doc"], meta=r["meta"], dist=r["dist"]))
+            seen_articles.add(article_id)
+        if len(results) >= top_k:
+            break
     
     return results
 

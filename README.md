@@ -1,7 +1,10 @@
 # RAG Support API
 
-Сервис поиска и генерации ответов по локальной базе знаний. Статьи
-индексируются в ChromaDB; ответы формируются через настроенного LLM-провайдера.
+Сервис поиска и генерации ответов по локальной базе знаний. ChromaDB хранит
+постоянную копию индекса, а поиск выполняется собственным CPU-only C-движком
+по непрерывной матрице `float32`; ответы формируются через Yandex AI Studio.
+Повторные вопросы кэшируются на час по умолчанию: это избавляет от повторного
+эмбеддинга, поиска и обращения к модели. Кэш очищается после переиндексации.
 
 ## Требования
 
@@ -23,7 +26,7 @@ YANDEX_CLOUD_BASE_URL=https://ai.api.cloud.yandex.net/v1
 YANDEX_CLOUD_TEMPERATURE=0.3
 YANDEX_CLOUD_MAX_OUTPUT_TOKENS=65536
 CHROMA_DIR=./chroma_db
-EMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
+EMBED_MODEL=intfloat/multilingual-e5-small
 TOP_K=5
 ADMIN_TOKEN=replace-with-a-long-random-value
 JWT_SECRET=replace-with-a-long-random-value
@@ -70,8 +73,23 @@ curl http://localhost:9001/health
 
 ```bash
 python -m pip install -r api/requirements.txt pytest
+python -m pip install .
 PYTHONPATH=. pytest api/tests -q
 ```
+
+`pip install .` собирает модуль `rag_vector_native`: C-код с runtime-dispatch
+AVX2/FMA на x86-64, NEON на ARM и безопасным scalar fallback. После каждого
+`POST /api/ingest` новый полностью подготовленный индекс атомарно публикуется
+в RAM. При перезапуске API он восстанавливается из ChromaDB до начала поиска.
+
+Для retrieval используется `intfloat/multilingual-e5-small`. Индексация
+добавляет к статьям префикс `passage: `, а поиск — `query: `, как требует
+модель. При изменении `EMBED_MODEL` обязательно выполните `POST /api/ingest`:
+векторы от разных embedding-моделей несовместимы.
+
+При индексации статьи без `search_phrases` автоматически обогащаются через
+Yandex AI Studio: фразы сохраняются в локальном `support_*.json`, а затем
+включаются в embedding. Уже заполненные статьи повторно не отправляются.
 
 Совместимые маршруты без префикса `/api` не поддерживаются.
 

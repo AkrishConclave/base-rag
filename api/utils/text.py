@@ -3,6 +3,14 @@ import re
 import html
 
 
+# Frequent misspellings of domain actions.  They are corrected before both
+# title lookup and embedding, so an obvious typo never depends on an LLM guess.
+QUERY_TYPOS = {
+    "обжоловать": "обжаловать",
+    "облажовать": "обжаловать",
+}
+
+
 def html_to_text(html_str: str) -> str:
     """
     Преобразует HTML в чистый текст, удаляя теги и base64 изображения
@@ -76,13 +84,14 @@ def extract_keywords(query: str) -> str:
         'приходят', 'приходит', 'пришло', 'пришел', 'пришла',
         'работает', 'работают', 'работаю',
         'можно', 'нужно', 'надо', 'должен', 'должна', 'должны',
-        'это', 'этот', 'эта', 'эти', 'такой', 'такая', 'такие',
+        'это', 'этот', 'эта', 'эти', 'такой', 'такая', 'такие', 'такое',
+        'помоги', 'пожалуйста', 'я', 'мы', 'могу', 'можем', 'хочу', 'хотим',
         'для', 'про', 'о', 'об', 'от', 'до', 'из', 'в', 'на', 'с', 'по', 'к', 'у'
     }
     
     # Убираем знаки препинания и разбиваем на слова
     clean_query = re.sub(r'[^\w\s]', ' ', query.lower())
-    words = clean_query.split()
+    words = [QUERY_TYPOS.get(word, word) for word in clean_query.split()]
     keywords = [w for w in words if w not in stop_words and len(w) > 2]
     result = ' '.join(keywords) if keywords else query
     print(f"🔍 Извлеченные ключевые слова: {result}")

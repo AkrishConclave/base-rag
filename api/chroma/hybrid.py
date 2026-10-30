@@ -2,10 +2,12 @@
 from __future__ import annotations
 from typing import List
 from api.config import settings
-from api.chroma.client import get_collection, get_embedder
+from api.chroma.client import get_embedder
+from api.chroma.embeddings import encode_query
 from api.chroma.schema import SearchResult
 from api.llm.prompt_refine import expand_query_with_llm
 from api.utils.text import extract_keywords
+from api.vector_engine import search_index
 
 
 def bm25_search(query: str, documents: List[str], top_k: int = 10) -> List[tuple[int, float]]:
@@ -75,14 +77,6 @@ def hybrid_search(query: str, top_k: int | None = None, bm25_weight: float = 0.3
         top_k = settings.top_k
     
     embedder = get_embedder()
-    collection = get_collection()
-    
-    # Формируем фильтр по статусу
-    where_filter = None
-    if not admin_mode:
-        # По умолчанию (публичная справка) - только статус 1 (для клиентов)
-        where_filter = {"status": 1}
-    # Если admin_mode=True, where_filter остается None - показываем все статьи (status=0 ИЛИ status=1)
     
     # Извлекаем ключевые слова и расширяем запрос
     keywords = extract_keywords(query)
@@ -90,20 +84,11 @@ def hybrid_search(query: str, top_k: int | None = None, bm25_weight: float = 0.3
     search_query = f"{keywords} {expanded_query}" if keywords != query else expanded_query
     
     # Векторный поиск
-    q_emb = embedder.encode([search_query])[0].tolist()
-    query_params = {
-        "query_embeddings": [q_emb],
-        "n_results": top_k * 3,  # Берем больше для гибридного ранжирования
-        "include": ["documents", "metadatas", "distances"]
-    }
-    if where_filter:
-        query_params["where"] = where_filter
-    
-    vector_resp = collection.query(**query_params)
-    
-    vector_docs = vector_resp["documents"][0]
-    vector_metas = vector_resp["metadatas"][0]
-    vector_dists = vector_resp["distances"][0]
+    q_emb = encode_query(embedder, search_query)
+    vector_hits = search_index(q_emb, top_k * 3, admin_mode)
+    vector_docs = [hit.doc for hit in vector_hits]
+    vector_metas = [hit.meta for hit in vector_hits]
+    vector_dists = [hit.dist for hit in vector_hits]
     
     # BM25 поиск по найденным документам
     bm25_results = bm25_search(query, vector_docs, top_k=len(vector_docs))
@@ -114,8 +99,8 @@ def hybrid_search(query: str, top_k: int | None = None, bm25_weight: float = 0.3
     vector_weight = 1.0 - bm25_weight
     
     for idx, (doc, meta, dist) in enumerate(zip(vector_docs, vector_metas, vector_dists)):
-        # Нормализуем векторный score (1.0 - dist, где dist обычно 0-2)
-        vector_score = max(0.0, 1.0 - (dist / 2.0))
+        # Native index returns cosine distance: 1 - cosine_similarity.
+        vector_score = max(0.0, 1.0 - dist)
         
         # Получаем BM25 score (нормализуем к 0-1)
         bm25_score = bm25_scores.get(idx, 0.0)

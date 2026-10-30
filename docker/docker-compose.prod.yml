@@ -32,16 +32,20 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
-    image: rag-support-api:latest
+    image: base-rag-api:latest
     container_name: rag_api
     restart: unless-stopped
     # В prod НЕ монтируем код - только образ
     volumes:
       - ../chroma_db:/chroma_db
+      - hf-cache:/models/huggingface
+      - rag-cache:/cache
     env_file:
       - ../deployment/prod.env
     environment:
       - PYTHONPATH=/app
+      # Keep Chroma's persistent index in the mounted host directory.
+      - CHROMA_DIR=/chroma_db
     ports:
       - "9001:9001"
     depends_on:
@@ -58,6 +62,8 @@ services:
 
 volumes:
   redis-data:
+  hf-cache:
+  rag-cache:
 
 networks:
   rag-network:

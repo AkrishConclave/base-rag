@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List
 from api.chroma.client import get_embedder
+from api.chroma.embeddings import encode_query
 from api.utils.security import verify_admin_token
 
 router = APIRouter(
@@ -42,8 +43,8 @@ async def create_embedding(request: EmbedRequest):
     """
     try:
         embedder = get_embedder()
-        embeddings = await asyncio.to_thread(embedder.encode, [request.text])
-        embedding = embeddings[0].tolist()
+        embedding = await asyncio.to_thread(encode_query, embedder, request.text)
+        embedding = embedding.tolist()
         return EmbedResponse(
             embedding=embedding,
             dimension=len(embedding)
