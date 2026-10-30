@@ -6,6 +6,8 @@ import chromadb
 from api.config import settings
 from api.chroma.client import get_embedder
 from api.chroma.embeddings import encode_passages
+from api.chroma.enrichment import enrich_missing_search_phrases
+from api.llm.cache import get_cache
 from api.utils.text import html_to_text, chunk_text
 from api.vector_engine import InMemoryVectorIndex, replace_index
 
@@ -58,6 +60,9 @@ def run_ingest() -> int:
     print(f"Loading JSON file: {json_file}")
     with open(json_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
+    enriched = enrich_missing_search_phrases(data, json_file)
+    if enriched:
+        print(f"Generated search metadata for {enriched} articles")
     
     # Фильтруем статьи со status = 1 (для клиентов) и status = 0 (для staff)
     rows = [article for article in data.get("support", []) if article.get("status") in [0, 1]]
@@ -90,7 +95,16 @@ def run_ingest() -> int:
         plain = html_to_text(raw_html)
         if not plain:
             continue
-        chunks = chunk_text(plain, title=row.get("title") or "")
+        search_phrases = row.get("search_phrases") or []
+        if not isinstance(search_phrases, list):
+            search_phrases = []
+        search_phrases = [str(phrase).strip() for phrase in search_phrases if str(phrase).strip()]
+        title = row.get("title") or ""
+        if search_phrases:
+            # Keep generated aliases in every embedded chunk.  A title prefix
+            # alone can be lost when a backend normalises document content.
+            plain = f"Поисковые формулировки: {'; '.join(search_phrases)}\n\n{plain}"
+        chunks = chunk_text(plain, title=title)
         for idx, chunk in enumerate(chunks):
             doc_id = f"{aid}_{idx}"
             all_ids.append(doc_id)
@@ -127,6 +141,9 @@ def run_ingest() -> int:
     # Chroma remains the durable copy. Publish the fully built RAM index only
     # after it has every vector, so concurrent searches never observe a half-index.
     replace_index(InMemoryVectorIndex.create(all_embs, all_docs, metadatas))
+    # A new corpus changes the context for every answer, so no previous
+    # response or provider cache entry may be reused.
+    get_cache().clear()
     print("Done. Persisted to", settings.chroma_dir)
     
     # Подсчитываем статистику по статусам

@@ -55,6 +55,7 @@ def test_batch_ingest_execution():
     json_bytes = json.dumps(test_data).encode("utf-8")
 
     with patch("api.chroma.ingest.find_support_json", return_value="/dummy/path/support_test.json"), \
+         patch("api.chroma.ingest.enrich_missing_search_phrases", return_value=0), \
          patch("api.chroma.ingest.get_embedder") as mock_get_embedder, \
          patch("chromadb.PersistentClient") as mock_chroma_client, \
          patch("builtins.open", mock_open(read_data=json_bytes)):

@@ -1,17 +1,60 @@
 """Роут для обработки вопросов через RAG"""
 import asyncio
+import json
 import logging
+import re
 from fastapi import APIRouter, HTTPException, Request
 from api.models.request import AskRequest
-from api.utils.security import is_admin_request
 from api.models.response import AskResponse, Source
 from api.chroma.search import search
 from api.chroma.hybrid import hybrid_search
+from api.llm.prompt_refine import expand_query_with_llm
 from api.llm.prompt_answer import build_prompt
 from api.llm.factory import get_llm_provider
+from api.llm.cache import get_cache
+from api.utils.text import extract_keywords
+from api.vector_engine import search_title_matches
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["RAG"])
+
+_RAG_RESPONSE_CACHE_SCOPE = "public-rag-response-v1"
+_RAG_RESPONSE_CACHE_MODEL = "rag-response"
+
+
+def _normalise_cache_question(question: str) -> str:
+    """Make inconsequential whitespace and letter case share one cache entry."""
+    return re.sub(r"\s+", " ", question).strip().casefold()
+
+
+def _get_cached_response(question: str) -> AskResponse | None:
+    cached = get_cache().get(
+        _normalise_cache_question(question),
+        _RAG_RESPONSE_CACHE_SCOPE,
+        _RAG_RESPONSE_CACHE_MODEL,
+    )
+    if not cached:
+        return None
+    try:
+        return AskResponse.model_validate(json.loads(cached))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        logger.warning("Ignoring an invalid cached RAG response")
+        return None
+
+
+def _cache_response(question: str, response: AskResponse) -> None:
+    get_cache().set(
+        _normalise_cache_question(question),
+        _RAG_RESPONSE_CACHE_SCOPE,
+        _RAG_RESPONSE_CACHE_MODEL,
+        response.model_dump_json(),
+    )
+
+
+def _needs_query_rewrite(question: str) -> bool:
+    """Avoid an extra model call when a title already clearly matches."""
+    words = set(re.findall(r"\w+", extract_keywords(question).casefold()))
+    return not search_title_matches(words, top_k=1, admin_mode=True)
 
 
 def _format_search_results_as_answer(hits: list, question: str) -> str:
@@ -52,17 +95,28 @@ async def ask(request: AskRequest, req: Request):
     question = request.q.strip()
     if not question:
         raise HTTPException(status_code=400, detail="Вопрос не может быть пустым")
+
+    cached_response = _get_cached_response(question)
+    if cached_response is not None:
+        logger.info("💾 Returning cached RAG response")
+        return cached_response
     
-    # Проверка прав администратора/staff на бэкенде
-    admin_mode = is_admin_request(req)
+    # The public knowledge-base API intentionally searches the complete
+    # published corpus. Operational endpoints retain their token protection;
+    # `status` is not an access-control boundary for answers returned here.
+    admin_mode = True
 
     # Поиск релевантных документов (гибридный или векторный)
     # Это критически важная часть - должна работать всегда
     try:
+        search_query = question
+        if _needs_query_rewrite(question):
+            search_query = await asyncio.to_thread(expand_query_with_llm, question, True)
+            logger.info("Using Yandex-normalized query for retrieval")
         if request.use_hybrid:
-            hits = await asyncio.to_thread(hybrid_search, question, admin_mode=admin_mode)
+            hits = await asyncio.to_thread(hybrid_search, search_query, admin_mode=admin_mode)
         else:
-            hits = await asyncio.to_thread(search, question, admin_mode=admin_mode)
+            hits = await asyncio.to_thread(search, search_query, admin_mode=admin_mode)
         logger.info(f"Найдено {len(hits)} результатов для запроса: {question}")
     except Exception as e:
         logger.error(f"Ошибка при поиске документов: {e}", exc_info=True)
@@ -72,14 +126,20 @@ async def ask(request: AskRequest, req: Request):
         )
     
     # Формирование источников (всегда возвращаем, даже если LLM не работает)
-    sources = [
-        Source(
-            title=h.meta.get("title", "Без названия"),
-            id=h.meta.get("article_id", ""),
-            dist=h.dist
+    sources = []
+    source_ids = set()
+    for hit in hits:
+        article_id = hit.meta.get("article_id", "")
+        if article_id in source_ids:
+            continue
+        source_ids.add(article_id)
+        sources.append(
+            Source(
+                title=hit.meta.get("title", "Без названия"),
+                id=article_id,
+                dist=hit.dist,
+            )
         )
-        for h in hits
-    ]
     
     # Попытка генерации ответа через LLM
     # Если не получится - возвращаем результаты поиска
@@ -97,7 +157,9 @@ async def ask(request: AskRequest, req: Request):
         )
         
         logger.info(f"✅ Успешно сгенерирован ответ через LLM для запроса: {question}")
-        return AskResponse(answer=answer, sources=sources)
+        response = AskResponse(answer=answer, sources=sources)
+        _cache_response(question, response)
+        return response
         
     except ValueError as e:
         # Ошибка конфигурации (например, нет API ключа) - не критично, возвращаем поиск

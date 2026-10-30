@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 import openai
 
@@ -49,6 +50,7 @@ class YandexAIStudioProvider(LLMProvider):
         system_message: str | None,
         max_tokens: int,
     ) -> str:
+        started_at = time.perf_counter()
         response = self._get_client().responses.create(
             model=self.model_uri,
             temperature=settings.yandex_cloud_temperature,
@@ -58,6 +60,7 @@ class YandexAIStudioProvider(LLMProvider):
             store=True,
             truncation="disabled",
         )
+        logger.info("Yandex AI Studio response received in %.3f s", time.perf_counter() - started_at)
         if not response.output_text:
             raise ValueError("Yandex AI Studio вернул ответ без текста")
         return response.output_text

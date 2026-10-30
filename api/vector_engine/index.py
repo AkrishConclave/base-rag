@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import threading
+import re
+from difflib import SequenceMatcher
 from dataclasses import dataclass
 from typing import Any, Sequence
 
@@ -76,6 +78,46 @@ class InMemoryVectorIndex:
             for index, score in hits
         ]
 
+    def title_matches(self, query_words: set[str], top_k: int, admin_mode: bool) -> list[SearchResult]:
+        """Return articles whose titles cover the meaningful query terms.
+
+        Dense embeddings are tolerant of phrasing, but a short how-to query
+        should never miss an article with the matching title because of a
+        singular/plural form or one typo.
+        """
+        if not query_words or top_k <= 0:
+            return []
+        allowed = set(self.all_indices if admin_mode else self.public_indices)
+        matches: list[tuple[float, int]] = []
+        seen_articles: set[str] = set()
+        for index, meta in enumerate(self.metadatas):
+            if index not in allowed:
+                continue
+            article_id = str(meta.get("article_id", ""))
+            if article_id in seen_articles:
+                continue
+            title_words = set(re.findall(r"\w+", (meta.get("title") or "").casefold()))
+            if not title_words:
+                continue
+            covered = sum(
+                any(
+                    word == title_word
+                    or (min(len(word), len(title_word)) >= 5 and (word.startswith(title_word) or title_word.startswith(word)))
+                    or (len(word) >= 7 and SequenceMatcher(None, word, title_word).ratio() >= 0.88)
+                    for title_word in title_words
+                )
+                for word in query_words
+            )
+            coverage = covered / len(query_words)
+            if coverage >= 0.75:
+                matches.append((coverage, index))
+                seen_articles.add(article_id)
+        matches.sort(key=lambda item: item[0], reverse=True)
+        return [
+            SearchResult(doc=self.documents[index], meta=self.metadatas[index], dist=0.0)
+            for _, index in matches[:top_k]
+        ]
+
 
 _index: InMemoryVectorIndex | None = None
 _index_lock = threading.Lock()
@@ -118,3 +160,10 @@ def search_index(embedding: Sequence[float], top_k: int, admin_mode: bool) -> li
     if index is None:
         raise RuntimeError("In-memory vector index is not loaded. Run /api/ingest first.")
     return index.search(embedding, top_k, admin_mode)
+
+
+def search_title_matches(query_words: set[str], top_k: int, admin_mode: bool) -> list[SearchResult]:
+    index = _index
+    if index is None:
+        raise RuntimeError("In-memory vector index is not loaded. Run /api/ingest first.")
+    return index.title_matches(query_words, top_k, admin_mode)

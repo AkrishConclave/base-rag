@@ -39,6 +39,7 @@ services:
     volumes:
       - ../chroma_db:/chroma_db
       - hf-cache:/models/huggingface
+      - rag-cache:/cache
     env_file:
       - ../deployment/prod.env
     environment:
@@ -62,6 +63,7 @@ services:
 volumes:
   redis-data:
   hf-cache:
+  rag-cache:
 
 networks:
   rag-network:

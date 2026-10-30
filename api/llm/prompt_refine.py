@@ -100,20 +100,16 @@ def expand_query_with_llm(query: str, use_llm: bool = False) -> str:
         provider = get_llm_provider()
         keywords = extract_keywords(query)
         
-        prompt = f"""Пользователь задал вопрос для поиска в базе знаний Support: "{query}"
+        prompt = f"""Нормализуй вопрос пользователя для поиска в русскоязычной базе знаний: "{query}"
 
-Извлеки ключевые слова и сгенерируй синонимы для улучшения поиска.
-Верни ТОЛЬКО список ключевых слов и синонимов через запятую, без дополнительных объяснений."""
-        system_message = "Ты помощник для расширения поисковых запросов. Отвечай кратко, только ключевые слова через запятую."
+Исправь очевидные опечатки, замени разговорные формулировки точными терминами и
+верни одну короткую поисковую фразу. Не отвечай на вопрос и не добавляй пояснений."""
+        system_message = "Ты помощник поисковой системы. Отвечай одной поисковой фразой не длиннее 12 слов."
 
         expanded_text = provider.complete(prompt, system_message, max_tokens=80)
-        variants = [
-            v.strip() for v in expanded_text.replace('.', ',').split(',')
-            if v.strip() and len(v.strip()) > 2
-        ]
-        original_words = set(keywords.lower().split())
-        new_words = [v for v in variants if v.lower() not in original_words]
-        expanded = f"{keywords} {' '.join(new_words[:8])}"
+        expanded = " ".join(expanded_text.strip().split())[:300]
+        if not expanded:
+            expanded = keywords
         _EXPANSION_CACHE[query_key] = expanded
         return expanded
     except Exception as e:
