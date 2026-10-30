@@ -20,7 +20,8 @@ def test_health_check_endpoint():
 
 def test_ask_endpoint_success():
     """Тест успешного запроса к /api/ask с мокингом поиска и LLM"""
-    with patch("api.routes.rag.search") as mock_search, \
+    with patch("api.routes.rag._needs_query_rewrite", return_value=False), \
+         patch("api.routes.rag.search") as mock_search, \
          patch("api.routes.rag.get_llm_provider") as mock_get_llm:
 
         mock_hit = MagicMock()

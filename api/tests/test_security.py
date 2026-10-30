@@ -17,28 +17,19 @@ def configured_admin_secrets(monkeypatch):
     monkeypatch.setattr(settings, "jwt_secret", "test-jwt-secret-with-at-least-32-characters")
 
 
-def test_ask_request_ignores_admin_mode_in_body():
-    """Тест: передача admin_mode в теле запроса не включает админ режим без заголовка"""
+@pytest.fixture(autouse=True)
+def disable_query_rewrite_for_route_mocks():
+    """Route authorization tests do not need a loaded vector index."""
+    with patch("api.routes.rag._needs_query_rewrite", return_value=False):
+        yield
+
+
+def test_public_ask_searches_full_corpus_without_header():
+    """Public ask endpoint intentionally searches the complete knowledge base."""
     with patch("api.routes.rag.search") as mock_search:
         mock_search.return_value = []
 
-        # Передаем admin_mode: true в body
         response = client.post("/api/ask", json={"q": "тест", "admin_mode": True})
-
-        assert response.status_code == 200
-        # Проверяем, что функция search была вызвана с admin_mode=False (поскольку заголовка авторизации нет)
-        assert mock_search.called
-        _, kwargs = mock_search.call_args
-        assert kwargs.get("admin_mode") is False
-
-
-def test_ask_with_x_admin_token():
-    """Тест: заголовок X-Admin-Token дает доступ к admin_mode=True"""
-    with patch("api.routes.rag.search") as mock_search:
-        mock_search.return_value = []
-
-        headers = {"X-Admin-Token": settings.admin_token}
-        response = client.post("/api/ask", json={"q": "тест"}, headers=headers)
 
         assert response.status_code == 200
         assert mock_search.called
@@ -46,8 +37,20 @@ def test_ask_with_x_admin_token():
         assert kwargs.get("admin_mode") is True
 
 
-def test_ask_with_valid_jwt_token():
-    """Тест: валидный JWT токен staff/admin в Authorization header дает доступ к admin_mode=True"""
+def test_ask_with_x_admin_token_keeps_public_search_scope():
+    with patch("api.routes.rag.search") as mock_search:
+        mock_search.return_value = []
+
+        headers = {"X-Admin-Token": settings.admin_token}
+        response = client.post("/api/ask", json={"q": "тест x-admin-token"}, headers=headers)
+
+        assert response.status_code == 200
+        assert mock_search.called
+        _, kwargs = mock_search.call_args
+        assert kwargs.get("admin_mode") is True
+
+
+def test_ask_with_valid_jwt_token_keeps_public_search_scope():
     with patch("api.routes.rag.search") as mock_search:
         mock_search.return_value = []
 
@@ -56,7 +59,7 @@ def test_ask_with_valid_jwt_token():
         token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
         headers = {"Authorization": f"Bearer {token}"}
-        response = client.post("/api/ask", json={"q": "тест"}, headers=headers)
+        response = client.post("/api/ask", json={"q": "тест valid-jwt"}, headers=headers)
 
         assert response.status_code == 200
         assert mock_search.called
@@ -64,31 +67,29 @@ def test_ask_with_valid_jwt_token():
         assert kwargs.get("admin_mode") is True
 
 
-def test_ask_with_invalid_jwt_token():
-    """Тест: невалидный JWT токен не дает админ доступа"""
+def test_ask_with_invalid_jwt_token_keeps_public_search_scope():
     with patch("api.routes.rag.search") as mock_search:
         mock_search.return_value = []
 
         headers = {"Authorization": "Bearer invalid.jwt.token"}
-        response = client.post("/api/ask", json={"q": "тест"}, headers=headers)
+        response = client.post("/api/ask", json={"q": "тест invalid-jwt"}, headers=headers)
 
         assert response.status_code == 200
         assert mock_search.called
         _, kwargs = mock_search.call_args
-        assert kwargs.get("admin_mode") is False
+        assert kwargs.get("admin_mode") is True
 
 
-def test_jwt_is_rejected_when_jwt_secret_is_not_configured(monkeypatch):
-    """An unsigned JWT must never grant staff access."""
+def test_jwt_does_not_change_public_search_scope_when_secret_is_missing(monkeypatch):
     monkeypatch.setattr(settings, "jwt_secret", "")
     token = jwt.encode({"role": "staff"}, "untrusted-secret", algorithm="HS256")
 
     with patch("api.routes.rag.search") as mock_search:
         mock_search.return_value = []
-        response = client.post("/api/ask", json={"q": "тест"}, headers={"Authorization": f"Bearer {token}"})
+        response = client.post("/api/ask", json={"q": "тест missing-jwt-secret"}, headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200
-    assert mock_search.call_args.kwargs["admin_mode"] is False
+    assert mock_search.call_args.kwargs["admin_mode"] is True
 
 
 def test_protected_ingest_without_token():

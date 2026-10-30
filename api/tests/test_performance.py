@@ -22,7 +22,8 @@ def test_heuristic_query_expansion_fast():
 
 def test_ask_endpoint_async_nonblocking():
     """Тест: эндпоинт /api/ask вызывает search и LLM в asyncio.to_thread"""
-    with patch("api.routes.rag.hybrid_search") as mock_hybrid_search, \
+    with patch("api.routes.rag._needs_query_rewrite", return_value=False), \
+         patch("api.routes.rag.hybrid_search") as mock_hybrid_search, \
          patch("api.routes.rag.get_llm_provider") as mock_get_llm:
 
         mock_hit = MagicMock()
@@ -35,7 +36,7 @@ def test_ask_endpoint_async_nonblocking():
         mock_provider.complete_with_fallback.return_value = "Тестовый ответ LLM"
         mock_get_llm.return_value = mock_provider
 
-        response = client.post("/api/ask", json={"q": "тест", "use_hybrid": True})
+        response = client.post("/api/ask", json={"q": "fixture async hybrid request", "use_hybrid": True})
 
         assert response.status_code == 200
         assert response.json()["answer"] == "Тестовый ответ LLM"
