@@ -115,6 +115,76 @@ def test_upload_endpoints_require_admin_token():
     assert client.get("/api/download-support").status_code == 401
 
 
+def test_upload_keeps_existing_exports(monkeypatch, tmp_path):
+    """Новая загрузка не переименовывает шаблон и прежние экспорты."""
+    example_file = tmp_path / "support_example.json"
+    real_export = tmp_path / "support_202610311200.json"
+    example_file.write_text('{"support": []}', encoding="utf-8")
+    real_export.write_text('{"support": [{"id": 1}]}', encoding="utf-8")
+    monkeypatch.setattr("api.routes.upload.get_project_root", lambda: str(tmp_path))
+
+    response = client.post(
+        "/api/upload-support",
+        headers={"X-Admin-Token": settings.admin_token},
+        files={
+            "file": (
+                "support_202611011000.json",
+                b'{"support": [{"id": 2}]}',
+                "application/json",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["old_file_renamed"] is None
+    assert response.json()["size_bytes"] > 0
+    assert example_file.exists()
+    assert real_export.exists()
+    assert not list(tmp_path.glob("support_*old*.json"))
+    assert (tmp_path / "support_202611011000.json").exists()
+
+
+def test_upload_limit_keeps_previous_file(monkeypatch, tmp_path):
+    """Превышение лимита возвращает 413 и не повреждает прежний экспорт."""
+    target = tmp_path / "support_202611011000.json"
+    target.write_text('{"support": [{"id": 1}]}', encoding="utf-8")
+    monkeypatch.setattr("api.routes.upload.get_project_root", lambda: str(tmp_path))
+    monkeypatch.setattr(settings, "max_support_upload_bytes", 16)
+
+    response = client.post(
+        "/api/upload-support",
+        headers={"X-Admin-Token": settings.admin_token},
+        files={
+            "file": (
+                target.name,
+                b'{"support": [{"id": 22222222222222222222}]}',
+                "application/json",
+            )
+        },
+    )
+
+    assert response.status_code == 413
+    assert target.read_text(encoding="utf-8") == '{"support": [{"id": 1}]}'
+    assert not list(tmp_path.glob("*.upload"))
+
+
+def test_invalid_upload_keeps_previous_file(monkeypatch, tmp_path):
+    """Невалидный JSON не публикуется поверх существующего экспорта."""
+    target = tmp_path / "support_202611011000.json"
+    target.write_text('{"support": [{"id": 1}]}', encoding="utf-8")
+    monkeypatch.setattr("api.routes.upload.get_project_root", lambda: str(tmp_path))
+
+    response = client.post(
+        "/api/upload-support",
+        headers={"X-Admin-Token": settings.admin_token},
+        files={"file": (target.name, b'{"support": [', "application/json")},
+    )
+
+    assert response.status_code == 400
+    assert target.read_text(encoding="utf-8") == '{"support": [{"id": 1}]}'
+    assert not list(tmp_path.glob("*.upload"))
+
+
 def test_embed_endpoint_requires_admin_token():
     """Ресурсоёмкое создание эмбеддингов не должно быть публичным."""
     assert client.post("/api/embed", json={"text": "тест"}).status_code == 401

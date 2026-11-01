@@ -7,6 +7,7 @@ sentence-transformers
 openai>=1.86.0
 python-dotenv
 python-multipart
+ijson
 requests
 pydantic
 pydantic-settings

@@ -26,6 +26,25 @@
             },
             "description": "Проверка состояния API и ChromaDB. Используется для мониторинга и load balancer."
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"API сообщает healthy\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql(\"healthy\");",
+                  "    pm.expect(body).to.have.property(\"chroma_db\");",
+                  "});"
+                ]
+              }
+            }
+          ],
           "response": []
         }
       ],
@@ -86,8 +105,7 @@
                 {
                   "key": "file",
                   "type": "file",
-                  "src": [],
-                  "description": "JSON файл, начинающийся с support_"
+              "description": "Выберите конкретный JSON-файл support_<timestamp>.json. Папку выбирать нельзя; путь намеренно не хранится в коллекции."
                 }
               ]
             },
@@ -101,8 +119,28 @@
                 "upload-support"
               ]
             },
-            "description": "Загружает новый файл support_*.json. Старый файл автоматически переименовывается с добавлением *old* в название (например, support_202511221211.json -> support_202511221211*old*.json). После загрузки необходимо выполнить индексацию через /api/ingest."
+            "description": "Загружает новый файл support_*.json, не переименовывая и не удаляя предыдущие экспорты. В Body → form-data → file выберите конкретный JSON-файл, не каталог. Используйте timestamp в имени, например support_202511221211.json: индексация выберет самый новый timestamp. После загрузки выполните /api/ingest."
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Файл сохранён без переименования старых экспортов\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.message).to.eql(\"Файл успешно загружен\");",
+                  "    pm.expect(body.size_bytes).to.be.above(0);",
+                  "    pm.expect(body.old_file_renamed).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ],
           "response": []
         },
         {
@@ -165,7 +203,7 @@
                 "ask"
               ]
             },
-            "description": "Публичная справка для клиентов. По умолчанию показывает только публичные статьи (status=1). Для доступа к служебным статьям используйте отдельный запрос с X-Admin-Token."
+            "description": "Публичный запрос с векторным поиском по всему опубликованному корпусу. X-Admin-Token не требуется."
           },
           "response": []
         },
@@ -198,23 +236,18 @@
                 "ask"
               ]
             },
-            "description": "Публичная справка с гибридным поиском. По умолчанию показывает только публичные статьи (status=1). Для доступа к служебным статьям используйте отдельный запрос с X-Admin-Token."
+            "description": "Публичный запрос с гибридным поиском по всему опубликованному корпусу. X-Admin-Token не требуется."
           },
           "response": []
         },
         {
-          "name": "Ask - Админ режим (все статьи)",
+          "name": "Ask - Полный корпус (публичный)",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Admin-Token",
-                "value": "{{admin_token}}",
-                "type": "text"
               }
             ],
             "body": {
@@ -236,7 +269,7 @@
                 "ask"
               ]
             },
-            "description": "Административный поиск по всем статьям. Требует X-Admin-Token из окружения Postman."
+            "description": "Публичный пример поиска по полному опубликованному корпусу. X-Admin-Token не требуется."
           },
           "response": []
         },
@@ -592,6 +625,52 @@
           "response": []
         },
         {
+          "name": "Cache Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Admin-Token",
+                "value": "{{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/debug/cache-stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "debug",
+                "cache-stats"
+              ]
+            },
+            "description": "Возвращает состояние, количество записей, TTL и приблизительный размер кэша. Требует X-Admin-Token."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Ответ содержит статистику кэша\", function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property(\"enabled\");",
+                  "    pm.expect(body).to.have.property(\"cache_type\");",
+                  "    pm.expect(body).to.have.property(\"total_entries\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
           "name": "Test LLM Connection",
           "request": {
             "method": "POST",
@@ -637,7 +716,7 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "http://localhost:9001",
+      "value": "http://rag.localhost",
       "type": "string"
     }
   ]

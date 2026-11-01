@@ -2,6 +2,8 @@
 import os
 import json
 import glob
+import re
+from datetime import datetime
 import chromadb
 from api.config import settings
 from api.chroma.client import get_embedder
@@ -12,8 +14,39 @@ from api.utils.text import html_to_text, chunk_text
 from api.vector_engine import InMemoryVectorIndex, replace_index
 
 
+SUPPORT_EXAMPLE_FILENAME = "support_example.json"
+SUPPORT_TIMESTAMP_PATTERN = re.compile(
+    r"^support_(\d{8}|\d{12}|\d{14})\.json$",
+    re.IGNORECASE,
+)
+SUPPORT_TIMESTAMP_FORMATS = {
+    8: "%Y%m%d",
+    12: "%Y%m%d%H%M",
+    14: "%Y%m%d%H%M%S",
+}
+
+
+def support_export_sort_key(file_path: str) -> tuple[int, datetime, str]:
+    """Сортирует экспорты прежде всего по timestamp в имени файла."""
+    filename = os.path.basename(file_path)
+    match = SUPPORT_TIMESTAMP_PATTERN.fullmatch(filename)
+    if match:
+        timestamp = match.group(1)
+        try:
+            parsed_timestamp = datetime.strptime(
+                timestamp,
+                SUPPORT_TIMESTAMP_FORMATS[len(timestamp)],
+            )
+            return 1, parsed_timestamp, filename.casefold()
+        except ValueError:
+            pass
+
+    # Обратная совместимость для старых support_*.json без timestamp.
+    return 0, datetime.fromtimestamp(os.path.getmtime(file_path)), filename.casefold()
+
+
 def find_support_json() -> str:
-    """Находит JSON файл, начинающийся с support_ в корне проекта"""
+    """Находит реальный экспорт support_*.json, исключая файл-шаблон."""
     # Получаем корень проекта (3 уровня вверх от api/chroma/ingest.py)
     current_file = os.path.abspath(__file__)
     project_root_from_file = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
@@ -22,6 +55,7 @@ def find_support_json() -> str:
     current_work_dir = os.getcwd()
     
     search_paths = [
+        settings.support_dir,
         "/project_root",  # Docker контейнер
         project_root_from_file,  # Локальный запуск (из структуры api/chroma/ingest.py)
         current_work_dir,  # Текущая рабочая директория
@@ -34,6 +68,7 @@ def find_support_json() -> str:
         if path and os.path.exists(path) and path not in unique_paths:
             unique_paths.append(path)
     
+    candidate_files = []
     for project_root in unique_paths:
         pattern = os.path.join(project_root, "support_*.json")
         files = glob.glob(pattern)
@@ -43,14 +78,22 @@ def find_support_json() -> str:
             f for f in files
             if "*old*" not in f
             and not f.endswith(".old.json")
-            and os.path.basename(f) != "support_example.json"
+            and os.path.basename(f).casefold() != SUPPORT_EXAMPLE_FILENAME
         ]
         
-        if files:
-            # Берем самый новый файл по времени модификации
-            return max(files, key=os.path.getmtime)
+        candidate_files.extend(os.path.abspath(file_path) for file_path in files)
+
+    if candidate_files:
+        # Один путь может встретиться несколько раз, если cwd совпадает с
+        # корнем проекта. Timestamp в имени важнее локального mtime.
+        unique_files = list(dict.fromkeys(candidate_files))
+        return max(unique_files, key=support_export_sort_key)
     
-    raise FileNotFoundError(f"Не найден файл support_*.json. Проверенные пути: {unique_paths}")
+    raise FileNotFoundError(
+        "Не найден реальный экспорт support_*.json. "
+        f"{SUPPORT_EXAMPLE_FILENAME} является только шаблоном и не индексируется. "
+        f"Проверенные пути: {unique_paths}"
+    )
 
 
 def run_ingest() -> int:

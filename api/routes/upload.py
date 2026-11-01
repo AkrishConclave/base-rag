@@ -1,15 +1,18 @@
 """Роут для загрузки и управления файлами support_*.json"""
 import os
 import glob
-import shutil
-import json
 import logging
+import tempfile
+
+import ijson
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from api.chroma.ingest import find_support_json
+from api.config import settings
 from api.utils.security import verify_admin_token
 
 logger = logging.getLogger(__name__)
+UPLOAD_CHUNK_SIZE = 1024 * 1024
 router = APIRouter(
     prefix="/api",
     tags=["Upload"],
@@ -19,6 +22,11 @@ router = APIRouter(
 
 def get_project_root() -> str:
     """Находит корень проекта"""
+    if settings.support_dir:
+        support_dir = os.path.abspath(settings.support_dir)
+        os.makedirs(support_dir, exist_ok=True)
+        return support_dir
+
     current_file = os.path.abspath(__file__)
     project_root_from_file = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
     current_work_dir = os.getcwd()
@@ -40,73 +48,86 @@ def get_project_root() -> str:
     return current_work_dir if os.path.exists(current_work_dir) else project_root_from_file
 
 
+def validate_support_json(file_path: str) -> None:
+    """Потоково проверяет JSON и наличие корневого массива support."""
+    root_is_object = False
+    support_is_array = False
+
+    try:
+        with open(file_path, "rb") as source:
+            for prefix, event, _ in ijson.parse(source):
+                if prefix == "" and event == "start_map":
+                    root_is_object = True
+                elif prefix == "support" and event == "start_array":
+                    support_is_array = True
+    except (ijson.JSONError, UnicodeError, OSError) as error:
+        raise ValueError(f"Невалидный JSON файл: {error}") from error
+
+    if not root_is_object or not support_is_array:
+        raise ValueError("JSON должен быть объектом с массивом support")
+
+
 @router.post("/upload-support")
 async def upload_support_file(file: UploadFile = File(...)):
     """
     Загружает новый файл support_*.json.
-    Старый файл автоматически переименовывается с добавлением *old*.
+    Ранее загруженные экспорты остаются без изменений.
     
     Args:
         file: JSON файл для загрузки
         
     Returns:
-        Информация о загруженном файле и переименованном старом файле
+        Информация о сохранённом файле
     """
+    filename = os.path.basename(file.filename or "")
+    if filename != file.filename:
+        raise HTTPException(status_code=400, detail="Имя файла не должно содержать путь")
+
     # Проверяем, что это JSON файл
-    if not file.filename.endswith('.json'):
+    if not filename.casefold().endswith('.json'):
         raise HTTPException(status_code=400, detail="Файл должен быть в формате JSON")
     
     # Проверяем, что имя файла начинается с support_
-    if not file.filename.startswith('support_'):
+    if not filename.casefold().startswith('support_'):
         raise HTTPException(
             status_code=400, 
             detail="Имя файла должно начинаться с 'support_'"
         )
-    
+
     project_root = get_project_root()
-    new_file_path = os.path.join(project_root, file.filename)
+    new_file_path = os.path.join(project_root, filename)
+    temporary_path = None
+    uploaded_size = 0
     
     try:
-        # Читаем содержимое файла для проверки валидности JSON
-        content = await file.read()
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=project_root,
+            prefix=f".{filename}.",
+            suffix=".upload",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = temporary_file.name
+            while chunk := await file.read(UPLOAD_CHUNK_SIZE):
+                uploaded_size += len(chunk)
+                if uploaded_size > settings.max_support_upload_bytes:
+                    limit_mib = settings.max_support_upload_bytes // (1024 * 1024)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Размер файла превышает допустимый лимит {limit_mib} MiB",
+                    )
+                temporary_file.write(chunk)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+
         try:
-            json.loads(content)  # Проверяем, что это валидный JSON
-        except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=f"Невалидный JSON файл: {str(e)}")
-        
-        # Ищем существующий файл support_*.json (без *old*)
-        existing_files = [
-            f for f in glob.glob(os.path.join(project_root, "support_*.json"))
-            if "*old*" not in f and not f.endswith(".old.json")
-        ]
-        
-        old_file_path = None
-        old_file_renamed = None
-        
-        # Если есть существующий файл и он отличается от нового
-        if existing_files:
-            existing_file = max(existing_files, key=os.path.getmtime)
-            
-            # Если новый файл имеет то же имя, что и существующий
-            if os.path.basename(existing_file) == file.filename:
-                # Переименовываем существующий в *old*
-                name, ext = os.path.splitext(file.filename)
-                old_file_renamed = f"{name}*old*{ext}"
-                old_file_path = os.path.join(project_root, old_file_renamed)
-                shutil.move(existing_file, old_file_path)
-                logger.info(f"Переименован существующий файл: {existing_file} -> {old_file_path}")
-            else:
-                # Переименовываем существующий файл
-                existing_name = os.path.basename(existing_file)
-                name, ext = os.path.splitext(existing_name)
-                old_file_renamed = f"{name}*old*{ext}"
-                old_file_path = os.path.join(project_root, old_file_renamed)
-                shutil.move(existing_file, old_file_path)
-                logger.info(f"Переименован существующий файл: {existing_file} -> {old_file_path}")
-        
-        # Сохраняем новый файл
-        with open(new_file_path, 'wb') as f:
-            f.write(content)
+            validate_support_json(temporary_path)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+        # os.replace атомарно публикует полностью записанный и проверенный файл.
+        os.replace(temporary_path, new_file_path)
+        temporary_path = None
         
         logger.info(f"Загружен новый файл: {new_file_path}")
         
@@ -114,8 +135,9 @@ async def upload_support_file(file: UploadFile = File(...)):
             status_code=200,
             content={
                 "message": "Файл успешно загружен",
-                "new_file": file.filename,
-                "old_file_renamed": old_file_renamed,
+                "new_file": filename,
+                "size_bytes": uploaded_size,
+                "old_file_renamed": None,
                 "project_root": project_root
             }
         )
@@ -125,6 +147,13 @@ async def upload_support_file(file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"Ошибка при загрузке файла: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ошибка при загрузке файла: {str(e)}")
+    finally:
+        await file.close()
+        if temporary_path and os.path.exists(temporary_path):
+            try:
+                os.unlink(temporary_path)
+            except OSError:
+                logger.warning("Не удалось удалить временный файл: %s", temporary_path)
 
 
 @router.get("/download-support")

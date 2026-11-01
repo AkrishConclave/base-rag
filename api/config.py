@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     chroma_dir: str = "./chroma_db"
     chroma_collection_name: str = "support_articles"
 
+    # Каталог экспортов базы знаний. Пустое значение сохраняет локальный поиск
+    # рядом с исходным кодом для обратной совместимости.
+    support_dir: str = ""
+    max_support_upload_bytes: int = 512 * 1024 * 1024
+
     # Embedding model.
     embed_model: str = "intfloat/multilingual-e5-small"
 
