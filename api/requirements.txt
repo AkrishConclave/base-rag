@@ -4,7 +4,7 @@ chromadb
 numpy
 # torch устанавливается отдельно в Dockerfile как CPU-only версия
 sentence-transformers
-openai>=1.86.0
+openai>=3.46.0
 python-dotenv
 python-multipart
 ijson
